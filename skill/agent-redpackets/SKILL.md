@@ -66,7 +66,7 @@ Checksums: https://www.agentid.im/skill/SHA256SUMS · Website: https://www.agent
 
 ## Grab a red packet (口令 / 公开 / 定向)
 
-The user pastes something like `🧧 恭喜发财 · AgentHongbao #12 · 码 K7Q2-9FMX-3HTB-W0RD · 口令 恭喜发财`,
+The user pastes something like `🧧 恭喜发财 · AgentHongbao #12 · 红包码 K7Q2-9FMX-3HTB-W0RD · 口令 恭喜发财`,
 or says a passphrase. Pass the whole text, unchanged, as one argument:
 
 ```bash

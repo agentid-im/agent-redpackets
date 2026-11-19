@@ -257,7 +257,7 @@ async function cmdGrab(ctx, pos, opt) {
   }
   let sig = "0x";
   if (p.signer !== ZeroAddress) {
-    if (!share.code && !share.passphrase) fail("这个红包需要红包码或口令，请把完整的分享口令发给我");
+    if (!share.code && !share.passphrase) fail("这个红包需要红包码或口令，请把完整的分享文字发给我");
     const key = claimKey(share.code, share.passphrase);
     if (key.address !== p.signer) fail("红包码或口令不对");
     sig = await signGrab(key, ctx.chainId, ctx.hb.target, share.id, from);
@@ -420,7 +420,7 @@ async function cmdCreate(ctx, pos, opt) {
   const id = (await ctx.hb.packetCount()) + 1n;
   const after = {
     expectedId: id.toString(),
-    note: "编号以交易上链后 PacketCreated 事件里的 id 为准；如果同时有别人发红包，编号会变，用 hongbao share 重新生成分享口令",
+    note: "编号以交易上链后 PacketCreated 事件里的 id 为准；如果同时有别人发红包，编号会变，用 hongbao share 重新生成分享文字",
     ...(t.custom ? { tokenWarning: `${customNote(t)}。请和用户确认这就是要发的代币；转账收手续费的代币会被合约拒绝` } : {}),
   };
   if (type !== "direct") {
@@ -458,7 +458,7 @@ const HELP = `hongbao <command> [options]     (all output is JSON; nothing is ev
   create --type code|public|direct ...           生成发红包的调用
          --total 0.01 --shares 5 [--token BNB|USDT|USDC|0x代币地址] [--ttl 秒] [--memo 祝福] [--pass 口令]
          [--equal] [--heat-step 秒] [--hide-pass]  |  --type direct --to alice=0.01,bob=0.02
-  share <id> [--code ..] [--pass ..]             重新生成分享口令
+  share <id> [--code ..] [--pass ..]             重新生成分享文字
   refund <id> --from 0x..                        发红包的人退回未领完部分
   withdraw --from 0x.. [--token BNB] [--to 0x..] 提取推送失败、记在账上的金额
   heat --from 0x..                               查看公开红包热度
