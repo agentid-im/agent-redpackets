@@ -254,5 +254,7 @@ npm run web:local                                 # optional: page with local te
 ## Credits
 
 The icon set in `web/src/icons.js` is drawn for this project. The page font is IBM Plex Sans
-(SIL Open Font License), self-hosted through @fontsource. The site supports Chinese and English and
+(SIL Open Font License), self-hosted through @fontsource. Packet preview cards are rendered in the Worker with resvg (`@resvg/resvg-wasm`) and a subset of
+Noto Sans SC (SIL Open Font License, `web/public/fonts/OFL.txt`) covering the 3,755 most common Chinese
+characters. The site supports Chinese and English and
 light and dark themes; strings live in `web/src/i18n.js`.

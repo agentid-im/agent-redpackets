@@ -13,6 +13,7 @@ import abi from "../lib/AgentHongbao.abi.json";
 import { isEmptyProfile, normalizeProfile, profileMessage } from "../lib/profile.mjs";
 import { NATIVE, displaySymbol, fetchTokenMeta, tokenAddress } from "../lib/token.mjs";
 import { SLUG_RE, packetSlug } from "../lib/link.mjs";
+import { renderCard } from "./card.js";
 
 const hb = new Interface(abi);
 const registry = new Interface(["function handleOf(address) view returns (string)"]);
@@ -401,16 +402,48 @@ const SHARE_TEXT = {
   },
 };
 
-/** index.html with title and link-preview tags in the visitor's language, for / and /p/:id links. */
+const CARD_VERSION = "1"; // bump when the card design changes, so caches fetch it again
+
+/** What a share page and its card show about a packet; null if it is not indexed. */
+async function packetSummary(env, slug) {
+  const p = await env.DB.prepare("SELECT id, kind, lucky, token, total, shares, creator, memo FROM packets WHERE slug = ?").bind(slug).first();
+  if (!p) return null;
+  const t = await tokenMeta(env, p.token).catch(() => null);
+  if (!t) return null;
+  const amount = t.decimals == null ? String(p.total) : formatUnits(BigInt(p.total), t.decimals).replace(/\.0+$|(\.\d*?)0+$/, "$1");
+  const custom = !t.listed;
+  return { ...p, amount, custom, symbol: custom ? displaySymbol(t.symbol, false) : t.symbol, tokenAddress: tokenAddress(String(p.token)) };
+}
+
+/** PNG card of one packet, rendered once and then served from Cloudflare's cache. */
+async function cardImage(request, env, ctx, url, slug) {
+  const cache = caches.default;
+  const key = new Request(url.toString());
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const lang = url.searchParams.get("lang") === "zh" ? "zh" : "en";
+  const p = await packetSummary(env, slug);
+  if (!p) return Response.redirect(`${url.origin}/${lang === "zh" ? "og-zh.jpg" : "og.jpg"}`, 302);
+  const png = await renderCard(env, url.origin, { ...p, kind: Number(p.kind), lucky: Boolean(p.lucky), shares: Number(p.shares) }, lang);
+  const res = new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000, immutable" } });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
+/** index.html with title and link-preview tags in the visitor's language, for / and /r/:code links. */
 async function sharePage(request, env, url, slug) {
   const lang = url.searchParams.get("lang") === "zh" ? "zh" : "en";
   const T = SHARE_TEXT[lang];
   let title = T.title;
   let desc = T.desc;
+  let image = `${url.origin}/${lang === "zh" ? "og-zh.jpg" : "og.jpg"}`;
+  let imageType = "image/jpeg";
   if (slug) {
     try {
       const p = await env.DB.prepare("SELECT id, kind, lucky, token, total, shares, creator FROM packets WHERE slug = ?").bind(slug).first();
       if (p) {
+        image = `${url.origin}/og/${slug}.png?lang=${lang}&v=${CARD_VERSION}`;
+        imageType = "image/png";
         const t = await tokenMeta(env, p.token).catch(() => null);
         if (!t) throw new Error("token unknown"); // fall back to the site texts rather than raw units
         const decimals = t?.decimals ?? 0;
@@ -424,7 +457,7 @@ async function sharePage(request, env, url, slug) {
       /* fall back to the site texts */
     }
   }
-  const image = `${url.origin}/${lang === "zh" ? "og-zh.jpg" : "og.jpg"}`;
+
   const page = `${url.origin}${url.pathname}?lang=${lang}`;
   const html = await env.ASSETS.fetch(new Request(new URL("/", url), request));
   const set = (selector, value) => ({ selector, value });
@@ -433,6 +466,7 @@ async function sharePage(request, env, url, slug) {
     set('meta[property="og:title"]', title),
     set('meta[property="og:description"]', desc),
     set('meta[property="og:image"]', image),
+    set('meta[property="og:image:type"]', imageType),
     set('meta[property="og:url"]', page),
     set('meta[name="twitter:title"]', title),
     set('meta[name="twitter:description"]', desc),
@@ -450,7 +484,7 @@ async function sharePage(request, env, url, slug) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     // The bare domain only redirects; browsers keep the #fragment across the redirect.
     if (url.hostname === "agentid.im") {
@@ -461,6 +495,16 @@ export default {
         return await api(request, url, env);
       } catch (e) {
         return json({ error: String(e?.message || e) }, 500, 0);
+      }
+    }
+    const og = url.pathname.match(/^\/og\/([^/]+)\.png$/);
+    if (og && SLUG_RE.test(og[1]) && (request.method === "GET" || request.method === "HEAD")) {
+      try {
+        const res = await cardImage(request, env, ctx, url, og[1]);
+        return request.method === "HEAD" ? new Response(null, { status: res.status, headers: res.headers }) : res;
+      } catch (e) {
+        console.log(JSON.stringify({ card: "failed", error: String(e?.message || e) }));
+        return Response.redirect(`${url.origin}/og.jpg`, 302);
       }
     }
     // Numbered packet paths are gone: packets are only reachable by their link code.
