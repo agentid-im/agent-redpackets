@@ -12,6 +12,7 @@ import { Contract, Interface, JsonRpcProvider, NonceManager, Wallet, formatEther
 import abi from "../lib/AgentHongbao.abi.json";
 import { isEmptyProfile, normalizeProfile, profileMessage } from "../lib/profile.mjs";
 import { NATIVE, displaySymbol, fetchTokenMeta, tokenAddress } from "../lib/token.mjs";
+import { SLUG_RE, packetSlug } from "../lib/link.mjs";
 
 const hb = new Interface(abi);
 const registry = new Interface(["function handleOf(address) view returns (string)"]);
@@ -135,9 +136,9 @@ export async function indexOnce(env) {
           stmts.push(
             db
               .prepare(
-                "INSERT OR REPLACE INTO packets (id, creator, kind, token, total, shares, expiry, lucky, heat_step, memo, block) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT OR REPLACE INTO packets (id, creator, kind, token, total, shares, expiry, lucky, heat_step, memo, block, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
               )
-              .bind(Number(a.id), a.creator, Number(a.kind), a.token, a.total.toString(), Number(a.shares), Number(a.expiry), a.lucky ? 1 : 0, Number(a.heatStep), a.memo, block)
+              .bind(Number(a.id), a.creator, Number(a.kind), a.token, a.total.toString(), Number(a.shares), Number(a.expiry), a.lucky ? 1 : 0, Number(a.heatStep), a.memo, block, packetSlug(log.transactionHash, a.id))
           );
           break;
         case "Grabbed":
@@ -361,18 +362,18 @@ async function api(request, url, env) {
     const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 10));
     const { results } = await db
       .prepare(
-        `SELECT c.packet_id, c.who, c.handle, c.amount, c.floored, c.block, p.token, p.kind, p.lucky, ${TOKEN_COLS} FROM claims c JOIN packets p ON p.id = c.packet_id ${TOKEN_JOIN} ${listedOnly} ORDER BY c.block DESC, c.slot DESC LIMIT ?`
+        `SELECT c.packet_id, p.slug, c.who, c.handle, c.amount, c.floored, c.block, p.token, p.kind, p.lucky, ${TOKEN_COLS} FROM claims c JOIN packets p ON p.id = c.packet_id ${TOKEN_JOIN} ${listedOnly} ORDER BY c.block DESC, c.slot DESC LIMIT ?`
       )
       .bind(limit)
       .all();
     const cursor = await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first();
     return json({ claims: results, indexedBlock: Number(cursor?.value ?? 0) });
   }
-  const m = path.match(/^\/api\/packets\/(\d+)$/);
-  if (m) {
-    const id = Number(m[1]);
-    const packet = await db.prepare("SELECT * FROM packets WHERE id = ?").bind(id).first();
+  const m = path.match(/^\/api\/r\/([^/]+)$/);
+  if (m && SLUG_RE.test(m[1])) {
+    const packet = await db.prepare("SELECT * FROM packets WHERE slug = ?").bind(m[1]).first();
     if (!packet) return json({ error: "not indexed" }, 404, 5);
+    const id = packet.id;
     packet.tokenMeta = await tokenMeta(env, packet.token).catch(() => null);
     const { results } = await db
       .prepare("SELECT who, slot, handle, amount, floored, block FROM claims WHERE packet_id = ? ORDER BY slot IS NULL, slot, block")
@@ -401,14 +402,14 @@ const SHARE_TEXT = {
 };
 
 /** index.html with title and link-preview tags in the visitor's language, for / and /p/:id links. */
-async function sharePage(request, env, url, packetId) {
+async function sharePage(request, env, url, slug) {
   const lang = url.searchParams.get("lang") === "zh" ? "zh" : "en";
   const T = SHARE_TEXT[lang];
   let title = T.title;
   let desc = T.desc;
-  if (packetId) {
+  if (slug) {
     try {
-      const p = await env.DB.prepare("SELECT id, kind, lucky, token, total, shares, creator FROM packets WHERE id = ?").bind(packetId).first();
+      const p = await env.DB.prepare("SELECT id, kind, lucky, token, total, shares, creator FROM packets WHERE slug = ?").bind(slug).first();
       if (p) {
         const t = await tokenMeta(env, p.token).catch(() => null);
         if (!t) throw new Error("token unknown"); // fall back to the site texts rather than raw units
@@ -462,9 +463,11 @@ export default {
         return json({ error: String(e?.message || e) }, 500, 0);
       }
     }
-    const share = url.pathname.match(/^\/p\/(\d+)\/?$/);
-    if (request.method === "GET" && (share || (url.pathname === "/" && url.searchParams.has("lang")))) {
-      return sharePage(request, env, url, share ? Number(share[1]) : null);
+    // Numbered packet paths are gone: packets are only reachable by their link code.
+    if (/^\/p\/\d+\/?$/.test(url.pathname)) return Response.redirect(`${url.origin}/${url.search}`, 302);
+    const share = url.pathname.match(/^\/r\/([^/]+)\/?$/);
+    if (request.method === "GET" && ((share && SLUG_RE.test(share[1])) || (url.pathname === "/" && url.searchParams.has("lang")))) {
+      return sharePage(request, env, url, share ? share[1] : null);
     }
     return env.ASSETS.fetch(request);
   },

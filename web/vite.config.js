@@ -28,6 +28,6 @@ export default defineConfig({
   base: "/", // absolute: the page is also served at /p/:id
   define: { __HONGBAO_CONFIG__: JSON.stringify(config) },
   // In dev, /api goes to a local `wrangler dev` (port 8787) when one runs; otherwise the page reads the chain.
-  server: { port: 5178, fs: { allow: [path.resolve(__dirname, "..")] }, proxy: network === "bsc" ? { "/api": "http://127.0.0.1:8787" } : undefined },
+  server: { port: 5178, fs: { allow: [path.resolve(__dirname, "..")] }, proxy: { "/api": "http://127.0.0.1:8787" } },
   build: { outDir: path.resolve(__dirname, "..", "dist", network), emptyOutDir: true },
 });

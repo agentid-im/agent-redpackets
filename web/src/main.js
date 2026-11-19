@@ -6,6 +6,7 @@ import { formatShare, inviteText } from "../../lib/share.mjs";
 import { INTRO_MAX, ProfileError, isEmptyProfile, normalizeProfile, profileMessage, tgUrl, xUrl } from "../../lib/profile.mjs";
 import { explain } from "../../lib/errors.mjs";
 import { displaySymbol, fetchTokenMeta, tokenAddress } from "../../lib/token.mjs";
+import { SLUG_RE, packetSlug, slugFrom } from "../../lib/link.mjs";
 import { I } from "./icons.js";
 import { DICT } from "./i18n.js";
 
@@ -133,21 +134,21 @@ const tokenIcon = (tk) => `<span class="token-ico ${tk.custom ? "custom" : tk.sy
 const notice = (html, danger) => `<div class="notice${danger ? " danger" : ""}">${danger ? I.warning : I.info}<div>${html}</div></div>`;
 const extLink = (href, text) => `<a class="ext" href="${href}" target="_blank" rel="noreferrer">${text}${I.external}</a>`;
 /** Shareable packet link: a path (crawlers never see #fragments) with the language for previews. */
-const packetUrl = (id) => `${location.origin}/p/${id}?lang=${lang}`;
+const packetUrl = (slug) => `${location.origin}/r/${slug}?lang=${lang}`;
 const HASHTAGS = "#BinanceWalletHackathon #AgenticWallet";
 const shareTexts = {};
 /** Group message with a first-timer guide, in the current language. */
-function invite(id, share, intro) {
-  return inviteText({ share, intro, lead: t("share.linkText", { id }), url: packetUrl(id), skillUrl: SKILL_URL, lang });
+function invite(id, slug, share, intro) {
+  return inviteText({ share, intro, lead: t("share.linkText", { id }), url: packetUrl(slug), skillUrl: SKILL_URL, lang });
 }
 /** X, Telegram and copy buttons. share is the packet's share line, if the viewer has it. */
-function shareButtons(id, share, intro) {
-  const url = packetUrl(id);
-  const full = invite(id, share, intro);
+function shareButtons(id, slug, share, intro) {
+  const url = packetUrl(slug);
+  const full = invite(id, slug, share, intro);
   shareTexts[id] = full;
   const x = `https://x.com/intent/post?text=${encodeURIComponent(`${share || t("share.linkText", { id })}\n${t("share.xGuide")} ${url}\n${HASHTAGS}`)}`;
   const tg = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(full)}`;
-  return `<a class="btn btn-sm" href="${x}" target="_blank" rel="noreferrer">${I.xLogo}${t("share.x")}</a><a class="btn btn-sm" href="${tg}" target="_blank" rel="noreferrer">${I.plane}${t("share.tg")}</a><button type="button" class="btn-sm" data-copy-invite="${id}">${I.chat}${t("share.copyInvite")}</button><button type="button" class="btn-sm" data-copy-link="${id}">${I.copy}${t("share.link")}</button>`;
+  return `<a class="btn btn-sm" href="${x}" target="_blank" rel="noreferrer">${I.xLogo}${t("share.x")}</a><a class="btn btn-sm" href="${tg}" target="_blank" rel="noreferrer">${I.plane}${t("share.tg")}</a><button type="button" class="btn-sm" data-copy-invite="${id}">${I.chat}${t("share.copyInvite")}</button><button type="button" class="btn-sm" data-copy-link="${slug}">${I.copy}${t("share.link")}</button>`;
 }
 function bindShare(root = document) {
   for (const b of $$("[data-copy-link]", root)) b.onclick = () => copy(packetUrl(b.dataset.copyLink));
@@ -297,7 +298,7 @@ let currentPage = null;
 /** keepScroll: re-render the current page in place (language or wallet change). */
 function route(keepScroll = false) {
   const hash = location.hash || "#/";
-  const m = hash.match(/^#\/p\/(\d+)/);
+  const m = hash.match(/^#\/r\/([^/?]+)/);
   const page = m ? "packet" : hash.startsWith("#/mine") ? "mine" : hash.startsWith("#/how") ? "how" : hash.startsWith("#/create") ? "create" : "home";
   for (const a of $$(".nav a, .tabbar a")) a.classList.toggle("on", a.dataset.nav === page);
 
@@ -311,7 +312,7 @@ function route(keepScroll = false) {
   }
   const y = window.scrollY;
   currentPage = page === "how" ? "home" : page;
-  if (page === "packet") pagePacket(BigInt(m[1]));
+  if (page === "packet") openPacket(m[1]);
   else if (page === "mine") pageMine();
   else if (page === "create") pageCreate();
   else pageHome();
@@ -452,7 +453,7 @@ async function loadRecent() {
             seedToken(c.token, c.token_symbol, c.token_decimals);
             const tk = tokenOf(c.token);
             const amount = c.amount === null ? `<span class="t3">${t("packet.pending")}</span>` : esc(fmt(BigInt(c.amount), tk));
-            return `<tr class="row-link" data-href="#/p/${c.packet_id}">
+            return `<tr${c.slug ? ` class="row-link" data-href="#/r/${esc(c.slug)}"` : ""}>
               <td class="c-who"><div class="cell-main"><span class="avatar">${esc((c.handle || "?").slice(0, 1).toUpperCase())}</span><b>${esc(c.handle ? `${c.handle}.ai` : short(c.who))}</b></div></td>
               <td class="c-id"><div class="cell-main"><b>#${c.packet_id}</b><span class="tag">${t(`kind.${c.kind}`)}</span></div></td>
               <td class="right c-total">${amount}</td>
@@ -502,6 +503,7 @@ async function loadLatest() {
     for (const r of rows) seedToken(r.token, r.token_symbol, r.token_decimals);
     indexed = rows.map((r) => [
       BigInt(r.id),
+      r.slug,
       { kind: BigInt(r.kind), lucky: Boolean(r.lucky), token: r.token, total: BigInt(r.total), shares: BigInt(r.shares), grabbed: BigInt(r.claimed), expiry: BigInt(r.expiry) },
     ]);
   } catch {
@@ -509,7 +511,7 @@ async function loadLatest() {
   }
   if (indexed) {
     if (!body.isConnected) return;
-    body.innerHTML = indexed.length ? indexed.map(([id, p]) => packetRow(id, p)).join("") : `<tr class="empty-row"><td colspan="7">${t("latest.empty")}</td></tr>`;
+    body.innerHTML = indexed.length ? indexed.map(([id, slug, p]) => packetRow(id, p, slug)).join("") : `<tr class="empty-row"><td colspan="7">${t("latest.empty")}</td></tr>`;
     for (const tr of $$("tr[data-href]", body)) tr.onclick = () => (location.hash = tr.dataset.href);
     return;
   }
@@ -527,20 +529,21 @@ async function loadLatest() {
   }
 }
 
-function packetRow(id, p) {
+/** A feed row; it links to the packet only when its link code is known (indexed rows). */
+function packetRow(id, p, slug) {
   const tk = tokenOf(p.token);
   const kind = Number(p.kind);
   const st = statusOf(p);
   const pct = Number((p.grabbed * 100n) / (p.shares || 1n));
   const split = kind === 0 ? t("split.fixedShort") : splitName(p);
-  return `<tr class="row-link" data-href="#/p/${id}">
+  return `<tr${slug ? ` class="row-link" data-href="#/r/${esc(slug)}"` : ""}>
     <td class="c-id"><div class="cell-main"><b>#${id}</b><span class="tag">${t(`kind.${kind}`)}</span><span class="tag">${split}</span></div></td>
     <td class="c-token"><div class="cell-main">${tokenIcon(tk)}${symHtml(tk)}</div></td>
     <td class="right c-total">${esc(fmtNum(p.total, tk))}</td>
     <td class="c-progress"><div class="bar"><div class="progress"><i style="width:${pct}%"></i></div><span class="t3">${p.grabbed}/${p.shares}</span></div></td>
     <td class="c-status"><span class="tag ${st.cls}">${st.text}</span></td>
     <td class="hide-sm t3">${esc(when(p.expiry))}</td>
-    <td class="right c-view"><a href="#/p/${id}">${t("view")}</a></td>
+    <td class="right c-view">${slug ? `<a href="#/r/${esc(slug)}">${t("view")}</a>` : ""}</td>
   </tr>`;
 }
 
@@ -924,37 +927,57 @@ async function createPacket(type, f) {
   const receipt = await send(hb, method, args, { value });
   const ev = receipt.logs.map((l) => { try { return iface.parseLog(l); } catch { return null; } }).find((x) => x?.name === "PacketCreated");
   const id = ev.args.id;
+  const slug = packetSlug(receipt.hash, id);
   const share = type === "direct" ? null : formatShare({ id, code, passphrase, memo, includePassphrase: !f.get("hidePass"), lang });
-  save({ id: id.toString(), type, share, code, passphrase, memo, createdAt: Date.now() });
+  save({ id: id.toString(), slug, type, share, code, passphrase, memo, createdAt: Date.now() });
   toast(t("created.toast", { id }), "ok");
-  showCreated(id, type, share, code, passphrase, Boolean(f.get("hidePass")), profile.intro);
+  showCreated(id, slug, type, share, code, passphrase, Boolean(f.get("hidePass")), profile.intro);
   await publishProfile(profile, id);
 }
 
-function showCreated(id, type, share, code, passphrase, hidePass, intro) {
+function showCreated(id, slug, type, share, code, passphrase, hidePass, intro) {
   const box = $("#created");
   box.innerHTML = `
     <div class="card result">
       <h3 class="ok-title">${I.checkCircle}${t("created.title", { id })}</h3>
-      ${share ? `<p>${t("created.share")}</p><pre class="code">${esc(invite(id, share, intro))}</pre>` : `<p>${t("created.direct")}</p>`}
+      ${share ? `<p>${t("created.share")}</p><pre class="code">${esc(invite(id, slug, share, intro))}</pre>` : `<p>${t("created.direct")}</p>`}
       ${code ? `<div style="margin-top:12px">${notice(`${t("created.codeWarn")}${hidePass && passphrase ? t("created.passWarn", { pass: esc(passphrase) }) : ""}`, true)}</div>` : ""}
       ${type === "public" && !code ? `<p class="t3">${t("created.public", { id })}</p>` : ""}
       <div class="copy-row">
         ${share ? `<button id="copy-share" class="primary btn-sm">${I.copy}${t("created.copy")}</button>` : ""}
-        <a class="btn btn-sm" href="#/p/${id}">${t("created.view")}${I.arrowRight}</a>
+        <a class="btn btn-sm" href="#/r/${slug}">${t("created.view")}${I.arrowRight}</a>
       </div>
       <div class="divider"></div>
-      <div class="share-row">${shareButtons(id, share, intro)}</div>
+      <div class="share-row">${shareButtons(id, slug, share, intro)}</div>
       ${code ? `<p class="form-hint share-warn">${t("share.publicWarn")}</p>` : ""}
     </div>`;
-  if (share) $("#copy-share").onclick = () => copy(invite(id, share, intro));
+  if (share) $("#copy-share").onclick = () => copy(invite(id, slug, share, intro));
   bindShare(box);
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 // ------------------------------------------------------------- packet page
 
-async function pagePacket(id) {
+/** Opens a packet from its link code: the index resolves it; a sender's own record works before that. */
+async function openPacket(slug) {
+  if (!SLUG_RE.test(slug)) return notFound();
+  app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.opening")}</div></div>`;
+  let indexed = null;
+  try {
+    indexed = await api(`/r/${slug}`);
+  } catch {
+    indexed = null;
+  }
+  const id = indexed?.packet?.id ?? saved().find((e) => e.slug === slug)?.id;
+  if (id == null) return notFound();
+  pagePacket(BigInt(id), slug, indexed);
+}
+
+function notFound() {
+  app.innerHTML = `<div class="container page"><div class="card empty">${I.box}<p>${t("packet.notFound")}</p><a class="btn" href="#/">${t("packet.home")}</a></div></div>`;
+}
+
+async function pagePacket(id, slug, indexed) {
   app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.loading", { id })}</div></div>`;
   let p;
   try {
@@ -1016,7 +1039,7 @@ async function pagePacket(id) {
             <div class="kv-row"><span>${t("packet.contract")}</span><span>${CFG.explorer ? extLink(`${CFG.explorer}/address/${CFG.contract}`, short(CFG.contract)) : short(CFG.contract)}</span></div>
           </div>
           <div class="divider"></div>
-          <div class="share-row" id="share-row">${shareButtons(id, mine?.share)}</div>
+          <div class="share-row" id="share-row">${shareButtons(id, slug, mine?.share)}</div>
           ${mine?.share && mine.code ? `<p class="form-hint share-warn">${t("share.publicWarn")}</p>` : ""}
           ${canOpen || canRefund ? `<div class="actions">
             ${canOpen ? `<button id="open" class="btn-block">${I.spark}${t("packet.open", { n: p.grabbed - p.opened })}</button>` : ""}
@@ -1033,7 +1056,7 @@ async function pagePacket(id) {
     .then(({ profile }) => {
       if (!profile || !$("#creator-profile")) return;
       $("#creator-profile").innerHTML = profileBlock(profile);
-      $("#share-row").innerHTML = shareButtons(id, mine?.share, profile.intro);
+      $("#share-row").innerHTML = shareButtons(id, slug, mine?.share, profile.intro);
       bindShare($("#share-row"));
     })
     .catch(() => {});
@@ -1046,7 +1069,7 @@ async function pagePacket(id) {
       try {
         await fn();
         toast(t("tx.done"), "ok");
-        pagePacket(id);
+        openPacket(slug);
       } catch (e) {
         toast(reason(e), "error");
         b.disabled = false;
@@ -1055,23 +1078,17 @@ async function pagePacket(id) {
   };
   act("#open", () => send(hbRead, "open", [id, 20n]));
   act("#refund", () => send(hbRead, "refund", [id]));
-  renderClaims(id, p, token).catch((e) => {
+  renderClaims(id, p, token, indexed).catch((e) => {
     if ($("#claims")) $("#claims").innerHTML = `<tr class="empty-row"><td colspan="4">${esc(t("packet.claimsFailed", { reason: reason(e) }))}</td></tr>`;
   });
 }
 
-async function renderClaims(id, p, token) {
+async function renderClaims(id, p, token, indexed) {
   const list = $("#claims");
   const rows = [];
   const kind = Number(p.kind);
-  let indexed = null;
-  try {
-    indexed = await api(`/packets/${id}`);
-    // The index trails the chain by up to a minute; when it is behind, read the chain instead.
-    if (indexed.claims.length < Number(p.grabbed)) indexed = null;
-  } catch {
-    indexed = null;
-  }
+  // The index trails the chain by up to a minute; when it is behind, read the chain instead.
+  if (!indexed?.claims || indexed.claims.length < Number(p.grabbed)) indexed = null;
   if (indexed) {
     for (const c of indexed.claims) {
       const pending = c.amount === null;
@@ -1148,11 +1165,11 @@ function pageMine() {
             list.length
               ? list
                   .map(
-                    (e) => `<tr class="row-link" data-href="#/p/${esc(e.id)}">
+                    (e) => `<tr class="row-link" data-id="${esc(e.id)}" data-href="${e.slug ? `#/r/${esc(e.slug)}` : ""}">
                       <td><div class="cell-main"><b>#${esc(e.id)}</b><span class="tag">${t(`kind.${TYPES.indexOf(e.type)}`)}</span></div></td>
                       <td>${esc(e.memo || "—")}</td>
                       <td class="hide-sm t3">${esc(new Date(e.createdAt).toLocaleString(locale(), { hour12: false }))}</td>
-                      <td class="right"><a href="#/p/${esc(e.id)}">${t("view")}</a></td>
+                      <td class="right"><a${e.slug ? ` href="#/r/${esc(e.slug)}"` : ""}>${t("view")}</a></td>
                     </tr>`
                   )
                   .join("")
@@ -1162,21 +1179,46 @@ function pageMine() {
       </div>
     </div>
     <p class="t3 mine-note">${t("mine.note")}</p>
-    <form id="goto" class="goto"><input name="id" inputmode="numeric" placeholder="${t("mine.ph")}" aria-label="${t("mine.ph")}" /><button class="primary">${I.search}${t("view")}</button></form>
+    <form id="goto" class="goto"><input name="link" autocomplete="off" placeholder="${t("mine.ph")}" aria-label="${t("mine.ph")}" /><button class="primary">${I.search}${t("view")}</button></form>
   </div>`;
-  for (const tr of $$("tr[data-href]")) tr.onclick = () => (location.hash = tr.dataset.href);
+  for (const tr of $$("tr[data-href]")) tr.onclick = () => tr.dataset.href && (location.hash = tr.dataset.href);
   $("#goto").onsubmit = (e) => {
     e.preventDefault();
-    const v = new FormData(e.target).get("id");
-    if (/^\d+$/.test(v)) location.hash = `#/p/${v}`;
+    const slug = slugFrom(new FormData(e.target).get("link"));
+    if (slug) location.hash = `#/r/${slug}`;
+    else toast(t("mine.badLink"), "error");
   };
+  fillSlugs(list.filter((e) => !e.slug));
+}
+
+/** Finds the link code of records saved before codes existed, from their creating transaction. */
+async function fillSlugs(entries) {
+  if (!entries.length) return;
+  const head = Number(await logsReader.send("eth_blockNumber", []));
+  for (const e of entries) {
+    try {
+      // Start a little before the block the packet was created in (about 0.45 s per block).
+      const from = Math.max(Number(CFG.deployBlock), head - Math.ceil((Date.now() - e.createdAt) / 450) - 2000);
+      const [log] = await scanLogs(hbLogs.filters.PacketCreated(BigInt(e.id)), from, 2);
+      if (!log) continue;
+      const slug = packetSlug(log.transactionHash, e.id);
+      save({ ...e, slug });
+      const tr = $(`tr[data-id="${CSS.escape(String(e.id))}"]`);
+      if (tr) {
+        tr.dataset.href = `#/r/${slug}`;
+        tr.querySelector("td.right a")?.setAttribute("href", `#/r/${slug}`);
+      }
+    } catch {
+      /* stays without a link until the next visit */
+    }
+  }
 }
 
 // --------------------------------------------------------------------- boot
 
 if (!document.documentElement.dataset.theme) document.documentElement.dataset.theme = "light";
 {
-  // Shared links look like /p/12?lang=zh: adopt the language, then continue on the hash route.
+  // Shared links look like /r/<code>?lang=zh: adopt the language, then continue on the hash route.
   const qs = new URLSearchParams(location.search);
   const wanted = qs.get("lang");
   if (wanted === "zh" || wanted === "en") {
@@ -1184,8 +1226,8 @@ if (!document.documentElement.dataset.theme) document.documentElement.dataset.th
     try { localStorage.setItem("ahb:lang", wanted); } catch {}
     document.documentElement.lang = wanted === "zh" ? "zh-CN" : "en";
   }
-  const shared = location.pathname.match(/^\/p\/(\d+)\/?$/);
-  if (shared || wanted) history.replaceState(null, "", `/${shared ? `#/p/${shared[1]}` : location.hash}`);
+  const shared = location.pathname.match(/^\/r\/([^/]+)\/?$/);
+  if (shared || wanted) history.replaceState(null, "", `/${shared ? `#/r/${shared[1]}` : location.hash}`);
 }
 $("#lang-toggle").onclick = () => setLang(lang === "zh" ? "en" : "zh");
 $("#theme-toggle").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");

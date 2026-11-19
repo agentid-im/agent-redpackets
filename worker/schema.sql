@@ -16,8 +16,11 @@ CREATE TABLE IF NOT EXISTS packets (
   heat_step INTEGER NOT NULL DEFAULT 0,
   memo TEXT NOT NULL DEFAULT '',
   refunded TEXT,                  -- base units refunded to the creator, if any
-  block INTEGER NOT NULL
+  block INTEGER NOT NULL,
+  slug TEXT                       -- link code (lib/link.mjs), from the creating transaction
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS packets_slug ON packets (slug);
 
 -- One row per address per packet: a grabbed slot (code/public) or a direct claim.
 CREATE TABLE IF NOT EXISTS claims (

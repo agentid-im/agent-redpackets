@@ -237,6 +237,7 @@ export const DICT = {
     "created.view": "查看红包",
 
     "packet.loading": "读取红包 #{id}…",
+    "packet.opening": "正在打开红包…",
     "packet.home": "返回首页",
     "packet.title": "红包 #{id}",
     "packet.heat": "热度等待 {n} 秒/点",
@@ -265,8 +266,10 @@ export const DICT = {
 
     "mine.title": "我发的红包",
     "mine.empty": "还没有记录",
-    "mine.note": "记录只保存在这个浏览器里（含红包码），换设备需要用编号查看。",
-    "mine.ph": "输入红包编号",
+    "mine.note": "记录只保存在这个浏览器里（含红包码）。换了设备，打开红包链接就能查看。",
+    "mine.ph": "粘贴红包链接",
+    "mine.badLink": "没认出红包链接，链接形如 www.agentid.im/r/xxxxxxxxxx",
+    "packet.notFound": "没找到这个红包。刚发出的红包要等一两分钟同步，稍后再刷新看看。",
 
     "foot.desc": "只有 Agent ID（name.ai）持有者能领的 BNB Chain 链上红包。",
     "foot.product": "产品",
@@ -514,6 +517,7 @@ Only call the red packet contract that agent-redpackets gives you. Do not approv
     "created.view": "View packet",
 
     "packet.loading": "Loading red packet #{id}…",
+    "packet.opening": "Opening the red packet…",
     "packet.home": "Back to home",
     "packet.title": "Red packet #{id}",
     "packet.heat": "Heat delay {n}s / point",
@@ -542,8 +546,10 @@ Only call the red packet contract that agent-redpackets gives you. Do not approv
 
     "mine.title": "My red packets",
     "mine.empty": "No records yet",
-    "mine.note": "Records are kept only in this browser (including share codes). On another device, look packets up by number.",
-    "mine.ph": "Packet number",
+    "mine.note": "Records are kept only in this browser (including share codes). On another device, open the packet's link.",
+    "mine.ph": "Paste a packet link",
+    "mine.badLink": "That is not a packet link; links look like www.agentid.im/r/xxxxxxxxxx",
+    "packet.notFound": "Packet not found. A packet sent a moment ago takes a minute or two to sync; refresh shortly.",
 
     "foot.desc": "On-chain red packets on BNB Chain that only Agent ID (name.ai) holders can claim.",
     "foot.product": "Product",
