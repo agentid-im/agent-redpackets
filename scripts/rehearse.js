@@ -127,10 +127,12 @@ function main() {
   expectRefused("claiming it needs --allow-custom", hongbao("claim", junk.id, "--from", A["dave.ai"]));
   execute(expectOk("dave claims it once he accepts that token", hongbao("claim", junk.id, "--from", A["dave.ai"], "--allow-custom")));
 
-  // 7. passphrase equal to the greeting: the line leaves it out, the agent tries the greeting
-  const same = expectOk("erin builds a code packet whose passphrase is its greeting", hongbao("create", "--type", "code", "--total", "0.01", "--shares", "2", "--memo", "恭喜发财", "--pass", "恭喜发财", "--from", A["erin.ai"]));
-  check("the share line does not repeat the passphrase", !same.share.includes("口令"), same.share);
+  // 7. passphrase equal to the greeting: the line always names it; hidden, the agent tries the greeting
+  const same = expectOk("erin builds a code packet whose passphrase is its greeting", hongbao("create", "--type", "code", "--total", "0.01", "--shares", "2", "--memo", "恭喜发财", "--pass", "恭喜发财", "--hide-pass", "--from", A["erin.ai"]));
+  check("with the passphrase hidden the line ends at the code", !same.share.includes("口令"), same.share);
   execute(same);
+  const shown = hongbao("share", same.expectedId, "--code", same.code, "--pass", "恭喜发财", "--memo", "恭喜发财");
+  check("the share line names the passphrase even when it is the greeting", (shown.share ?? "").includes("口令 恭喜发财"), shown.share);
   execute(expectOk("bob grabs it from the line alone", hongbao("grab", same.share, "--from", A["bob.ai"])));
 
   expectRefused("a public packet in a custom token is refused", hongbao("create", "--type", "public", "--token", ct, "--total", "50", "--shares", "5", "--from", A["frank.ai"]));

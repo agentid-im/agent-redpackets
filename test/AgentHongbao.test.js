@@ -1112,9 +1112,10 @@ describe("share text and invite", () => {
     expect(share.parseShare(msg2).passphrase).to.equal("大吉大利");
   });
 
-  it("leaves out a passphrase equal to the greeting, and reports the greeting to try", () => {
+  it("always writes the passphrase, and reports the greeting to try when a line has none", () => {
     const code = claim.newCode();
-    const line = share.formatShare({ id: 1n, code, passphrase: "恭喜发财", memo: "恭喜发财" });
+    expect(share.formatShare({ id: 1n, code, passphrase: "恭喜发财", memo: "恭喜发财" })).to.include("口令 恭喜发财");
+    const line = share.formatShare({ id: 1n, code, passphrase: "恭喜发财", memo: "恭喜发财", includePassphrase: false });
     expect(line).to.not.include("口令");
     const parsed = share.parseShare(line);
     expect(parsed.passphrase).to.equal("");

@@ -21701,7 +21701,7 @@ function formatShare({ id: id2, code, passphrase, memo, includePassphrase = true
   const parts = [`\u{1F9E7} ${memo || L.packet}`, `AgentHongbao #${id2}`];
   if (code) parts.push(`${L.code} ${normalizeCode(code).match(/.{4}/g).join("-")}`);
   const p = normalizePassphrase(passphrase);
-  if (p && includePassphrase && p !== normalizePassphrase(memo)) parts.push(`${L.pass} ${p}`);
+  if (p && includePassphrase) parts.push(`${L.pass} ${p}`);
   return parts.join(" \xB7 ");
 }
 function parseShare(text, passphrase) {
