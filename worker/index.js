@@ -424,7 +424,7 @@ async function sharePage(request, env, url, slug) {
       /* fall back to the site texts */
     }
   }
-  const image = `${url.origin}/${lang === "zh" ? "og-zh.png" : "og.png"}`;
+  const image = `${url.origin}/${lang === "zh" ? "og-zh.jpg" : "og.jpg"}`;
   const page = `${url.origin}${url.pathname}?lang=${lang}`;
   const html = await env.ASSETS.fetch(new Request(new URL("/", url), request));
   const set = (selector, value) => ({ selector, value });
@@ -466,8 +466,10 @@ export default {
     // Numbered packet paths are gone: packets are only reachable by their link code.
     if (/^\/p\/\d+\/?$/.test(url.pathname)) return Response.redirect(`${url.origin}/${url.search}`, 302);
     const share = url.pathname.match(/^\/r\/([^/]+)\/?$/);
-    if (request.method === "GET" && ((share && SLUG_RE.test(share[1])) || (url.pathname === "/" && url.searchParams.has("lang")))) {
-      return sharePage(request, env, url, share ? share[1] : null);
+    const page = (share && SLUG_RE.test(share[1])) || (url.pathname === "/" && url.searchParams.has("lang"));
+    if (page && (request.method === "GET" || request.method === "HEAD")) {
+      const res = await sharePage(new Request(request.url, { headers: request.headers }), env, url, share ? share[1] : null);
+      return request.method === "HEAD" ? new Response(null, { status: res.status, headers: res.headers }) : res;
     }
     return env.ASSETS.fetch(request);
   },
