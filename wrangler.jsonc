@@ -1,0 +1,33 @@
+// Site, read API and indexer on Cloudflare (static assets + Worker + D1 + cron).
+//   npm run web:build && npx wrangler deploy
+// One-time setup: see "Indexer" in README.md (D1 database, schema, RPC_URL secret).
+{
+  "name": "agenthongbao",
+  "compatibility_date": "2026-11-18",
+  "main": "worker/index.js",
+  "assets": {
+    "directory": "./dist/bsc",
+    "binding": "ASSETS",
+    // The Worker sees every request: it redirects the bare domain, answers /api, and hands the rest
+    // to the static assets.
+    "run_worker_first": true
+  },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "www.agentid.im", "custom_domain": true },
+    // agentid.im has a proxied placeholder A record (192.0.2.1); this route answers it with a redirect.
+    { "pattern": "agentid.im/*", "zone_name": "agentid.im" }
+  ],
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "CONTRACT": "0xA39660B43c3F797d4bBEab8Df0e40D771565b8CE",
+    "REGISTRY": "0x60b9262456de011f7d15a54cdd8c48baaa8b022f",
+    "DEPLOY_BLOCK": "134546696",
+    "FALLBACK_RPC": "https://bsc-rpc.publicnode.com",
+    "KEEPER_MAX_GWEI": "1"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "agenthongbao", "database_id": "7b8e9dce-1a61-43f3-8cf6-277fea07cf91" }
+  ],
+  "observability": { "enabled": true }
+}

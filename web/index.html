@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Agent ID Red Packets · on-chain red packets only name.ai holders can claim</title>
+    <meta name="description" content="On-chain red packets on BNB Chain that only Agent ID (name.ai) holders can claim. Code, public and direct packets, claimed by your own Agent. 只有 Agent ID 持有者能领的链上红包。" />
+    <meta property="og:title" content="Agent ID Red Packets · let your Agent grab red packets" />
+    <meta property="og:description" content="On-chain red packets on BNB Chain that only Agent ID (name.ai) holders can claim." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.agentid.im/" />
+    <meta property="og:image" content="https://www.agentid.im/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Agent ID Red Packets · let your Agent grab red packets" />
+    <meta name="twitter:description" content="On-chain red packets on BNB Chain that only Agent ID (name.ai) holders can claim." />
+    <meta name="twitter:image" content="https://www.agentid.im/og.png" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("ahb:theme") || "light";
+          var l = localStorage.getItem("ahb:lang") || "en";
+          document.documentElement.dataset.theme = t;
+          document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="lm-diamond" x1="0.15" y1="0" x2="0.85" y2="1">
+          <stop offset="0" stop-color="#FFE45C" />
+          <stop offset="0.55" stop-color="#F8C50F" />
+          <stop offset="1" stop-color="#F59E0B" />
+        </linearGradient>
+        <linearGradient id="lm-spark" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#C4B5FD" />
+          <stop offset="1" stop-color="#7C3AED" />
+        </linearGradient>
+        <linearGradient id="lm-red" x1="0" y1="0" x2="0.6" y2="1">
+          <stop offset="0" stop-color="#FF6B7E" />
+          <stop offset="1" stop-color="#E02443" />
+        </linearGradient>
+        <radialGradient id="lm-gold" cx="0.35" cy="0.3" r="0.8">
+          <stop offset="0" stop-color="#FFF3B0" />
+          <stop offset="1" stop-color="#F0B90B" />
+        </radialGradient>
+      </defs>
+    </svg>
+    <header class="header">
+      <div class="header-inner">
+        <a class="brand" href="#/" aria-label="Agent ID 红包 首页">
+          <svg class="logo-mark" viewBox="0 0 64 64" aria-hidden="true">
+            <g class="lm-glow"><rect x="13" y="13" width="38" height="38" rx="11" transform="rotate(45 32 32)" fill="url(#lm-diamond)" /></g>
+            <g class="lm-face">
+              <rect class="lm-eye" x="24.6" y="25.5" width="3" height="6.5" rx="1.5" fill="#202630" />
+              <rect class="lm-eye" x="36.4" y="25.5" width="3" height="6.5" rx="1.5" fill="#202630" />
+              <path class="lm-smile" d="M25.5 36.5 Q32 41.5 38.5 36.5" fill="none" stroke="#202630" stroke-width="2.6" stroke-linecap="round" />
+            </g>
+            <path class="lm-spark" d="M9 3.5 L10.6 8.4 L15.5 10 L10.6 11.6 L9 16.5 L7.4 11.6 L2.5 10 L7.4 8.4 Z" fill="url(#lm-spark)" />
+            <g class="lm-packet">
+              <rect x="41" y="38" width="17" height="23" rx="3.2" fill="url(#lm-red)" />
+              <path d="M41 41.2 Q41 38 44.2 38 H54.8 Q58 38 58 41.2 V45 Q49.5 51 41 45 Z" fill="#B8243A" />
+              <circle cx="49.5" cy="46.6" r="3.4" fill="url(#lm-gold)" stroke="#B8243A" stroke-width="0.8" />
+              <rect x="43" y="52" width="2.2" height="7" rx="1.1" fill="#fff" opacity=".22" />
+            </g>
+          </svg>
+          <span class="brand-name">Agent ID</span>
+          <span class="brand-sub" data-i18n="brand.sub">红包</span>
+        </a>
+        <nav class="nav" aria-label="主导航">
+          <a href="#/" data-nav="home" data-i18n="nav.home">首页</a>
+          <a href="#/create" data-nav="create" data-i18n="nav.create">发红包</a>
+          <a href="#/how" data-nav="how" data-i18n="nav.how">怎么抢</a>
+          <a href="#/mine" data-nav="mine" data-i18n="nav.mine">我发的</a>
+        </nav>
+        <div class="header-tools">
+          <button type="button" class="icon-btn" id="lang-toggle"></button>
+          <button type="button" class="icon-btn" id="theme-toggle"></button>
+        </div>
+        <div id="wallet" class="wallet"></div>
+      </div>
+    </header>
+
+    <main id="app"></main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-cols">
+          <div>
+            <div class="footer-brand brand footer-logo"><svg class="logo-mark" viewBox="0 0 64 64" aria-hidden="true">
+            <g class="lm-glow"><rect x="13" y="13" width="38" height="38" rx="11" transform="rotate(45 32 32)" fill="url(#lm-diamond)" /></g>
+            <g class="lm-face">
+              <rect class="lm-eye" x="24.6" y="25.5" width="3" height="6.5" rx="1.5" fill="#202630" />
+              <rect class="lm-eye" x="36.4" y="25.5" width="3" height="6.5" rx="1.5" fill="#202630" />
+              <path class="lm-smile" d="M25.5 36.5 Q32 41.5 38.5 36.5" fill="none" stroke="#202630" stroke-width="2.6" stroke-linecap="round" />
+            </g>
+            <path class="lm-spark" d="M9 3.5 L10.6 8.4 L15.5 10 L10.6 11.6 L9 16.5 L7.4 11.6 L2.5 10 L7.4 8.4 Z" fill="url(#lm-spark)" />
+            <g class="lm-packet">
+              <rect x="41" y="38" width="17" height="23" rx="3.2" fill="url(#lm-red)" />
+              <path d="M41 41.2 Q41 38 44.2 38 H54.8 Q58 38 58 41.2 V45 Q49.5 51 41 45 Z" fill="#B8243A" />
+              <circle cx="49.5" cy="46.6" r="3.4" fill="url(#lm-gold)" stroke="#B8243A" stroke-width="0.8" />
+              <rect x="43" y="52" width="2.2" height="7" rx="1.1" fill="#fff" opacity=".22" />
+            </g>
+          </svg><span class="brand-name">Agent ID</span><span class="brand-sub" data-i18n="brand.sub">红包</span></div>
+            <p data-i18n="foot.desc">只有 Agent ID（name.ai）持有者能领的 BNB Chain 链上红包。</p>
+          </div>
+          <div>
+            <h4 data-i18n="foot.product">产品</h4>
+            <a href="#/create" data-i18n="nav.create">发红包</a>
+            <a href="#/how" data-i18n="nav.how">怎么抢</a>
+            <a href="#/mine" data-i18n="nav.mine">我发的</a>
+          </div>
+          <div>
+            <h4 data-i18n="foot.dev">开发者</h4>
+            <a href="/skill/SKILL.md" target="_blank" rel="noreferrer">Agent Skill</a>
+            <span id="contract-link"></span>
+          </div>
+        </div>
+        <div class="footer-legal">
+          <p data-i18n="foot.risk"></p>
+          <p data-i18n="foot.notice"></p>
+        </div>
+      </div>
+    </footer>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

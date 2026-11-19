@@ -1,0 +1,15 @@
+node_modules/
+artifacts/
+cache/
+coverage/
+coverage.json
+typechain-types/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+dist/
+deployments/localhost.json
+.dev.vars
+.wrangler/
+.DS_Store

@@ -1,0 +1,33 @@
+{
+  "name": "agenthongbao",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Red packets addressed to Agent ID (name.ai) holders on BNB Chain",
+  "license": "MIT",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:bsc": "hardhat run scripts/deploy.js --network bsc",
+    "check:mainnet": "node scripts/check-mainnet.js",
+    "abi": "hardhat compile && node scripts/export-abi.js",
+    "build:skill": "node skill/build.mjs",
+    "web:dev": "vite --config web/vite.config.js",
+    "web:local": "VITE_NETWORK=localhost vite --config web/vite.config.js",
+    "web:build": "vite build --config web/vite.config.js",
+    "local:node": "hardhat node",
+    "local:setup": "hardhat run scripts/local-setup.js --network localhost && node skill/build.mjs localhost",
+    "local:rehearse": "node scripts/rehearse.js",
+    "web:deploy": "vite build --config web/vite.config.js && wrangler deploy"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "6.1.2",
+    "esbuild": "0.28.2",
+    "hardhat": "2.29.2",
+    "vite": "8.3.8",
+    "wrangler": "4.165.0"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "ethers": "6.17.0"
+  }
+}
