@@ -66,6 +66,10 @@ function applyChrome() {
   $(".nav").setAttribute("aria-label", lang === "zh" ? "主导航" : "Main");
   $(".header .brand").setAttribute("aria-label", lang === "zh" ? "Agent ID 红包 首页" : "Agent ID Red Packets home");
   for (const el of $$("[data-i18n]")) el.innerHTML = t(el.dataset.i18n);
+  // Phones get the main navigation as a bottom tab bar.
+  $("#tabbar").innerHTML = [["home", "#/", I.home], ["create", "#/create", I.packet], ["how", "#/how", I.terminal], ["mine", "#/mine", I.box]]
+    .map(([k, href, ico]) => `<a href="${href}" data-nav="${k}">${ico}<span>${t(`nav.${k}`)}</span></a>`)
+    .join("");
   const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
   const lt = $("#lang-toggle");
   lt.innerHTML = `${I.lang}<span>${lang === "zh" ? "EN" : "中"}</span>`;
@@ -295,7 +299,7 @@ function route(keepScroll = false) {
   const hash = location.hash || "#/";
   const m = hash.match(/^#\/p\/(\d+)/);
   const page = m ? "packet" : hash.startsWith("#/mine") ? "mine" : hash.startsWith("#/how") ? "how" : hash.startsWith("#/create") ? "create" : "home";
-  for (const a of $$(".nav a")) a.classList.toggle("on", a.dataset.nav === page);
+  for (const a of $$(".nav a, .tabbar a")) a.classList.toggle("on", a.dataset.nav === page);
 
   if (!CFG.contract) {
     app.innerHTML = `<div class="container page"><div class="card">${t("noContract")}</div></div>`;
@@ -346,7 +350,7 @@ function pageHome() {
         </div>
         <div class="chat">
           <div class="bubble me">${t("demo.me1")}</div>
-          <div class="bubble agent">${t("demo.agent1")}</div>
+          <div class="bubble agent">${t("demo.agent1", { contract: CFG.contract ? short(CFG.contract) : "0x…" })}</div>
           <div class="bubble me">${t("demo.me2")}</div>
           <div class="bubble agent">${t("demo.agent2")}</div>
         </div>
@@ -365,13 +369,13 @@ function pageHome() {
         <button type="button" data-feed="claims" role="tab">${t("tab.claims")}</button>
       </div>
       <div class="table-wrap" data-panel="packets">
-        <table class="table">
+        <table class="table feed feed-packets">
           <thead><tr><th>${t("th.packet")}</th><th>${t("th.token")}</th><th class="right">${t("th.total")}</th><th>${t("th.progress")}</th><th>${t("th.status")}</th><th class="hide-sm">${t("th.expiry")}</th><th class="right">${t("th.action")}</th></tr></thead>
           <tbody id="latest"><tr class="empty-row"><td colspan="7"><span class="skeleton" style="width:200px"></span></td></tr></tbody>
         </table>
       </div>
       <div class="table-wrap" data-panel="claims" hidden>
-        <table class="table">
+        <table class="table feed feed-claims">
           <thead><tr><th>${t("th.agent")}</th><th>${t("th.packet")}</th><th class="right">${t("th.amount")}</th><th class="right">${t("th.when")}</th></tr></thead>
           <tbody id="recent"><tr class="empty-row"><td colspan="4"><span class="skeleton" style="width:200px"></span></td></tr></tbody>
         </table>
@@ -449,10 +453,10 @@ async function loadRecent() {
             const tk = tokenOf(c.token);
             const amount = c.amount === null ? `<span class="t3">${t("packet.pending")}</span>` : esc(fmt(BigInt(c.amount), tk));
             return `<tr class="row-link" data-href="#/p/${c.packet_id}">
-              <td><div class="cell-main"><span class="avatar">${esc((c.handle || "?").slice(0, 1).toUpperCase())}</span><b>${esc(c.handle ? `${c.handle}.ai` : short(c.who))}</b></div></td>
-              <td><div class="cell-main"><b>#${c.packet_id}</b><span class="tag">${t(`kind.${c.kind}`)}</span></div></td>
-              <td class="right">${amount}</td>
-              <td class="right t3">${ago(indexedBlock - c.block)}</td>
+              <td class="c-who"><div class="cell-main"><span class="avatar">${esc((c.handle || "?").slice(0, 1).toUpperCase())}</span><b>${esc(c.handle ? `${c.handle}.ai` : short(c.who))}</b></div></td>
+              <td class="c-id"><div class="cell-main"><b>#${c.packet_id}</b><span class="tag">${t(`kind.${c.kind}`)}</span></div></td>
+              <td class="right c-total">${amount}</td>
+              <td class="right t3 c-when">${ago(indexedBlock - c.block)}</td>
             </tr>`;
           })
           .join("")
@@ -530,13 +534,13 @@ function packetRow(id, p) {
   const pct = Number((p.grabbed * 100n) / (p.shares || 1n));
   const split = kind === 0 ? t("split.fixedShort") : splitName(p);
   return `<tr class="row-link" data-href="#/p/${id}">
-    <td><div class="cell-main"><b>#${id}</b><span class="tag">${t(`kind.${kind}`)}</span><span class="tag">${split}</span></div></td>
-    <td><div class="cell-main">${tokenIcon(tk)}${symHtml(tk)}</div></td>
-    <td class="right">${esc(fmtNum(p.total, tk))}</td>
-    <td><div class="bar"><div class="progress"><i style="width:${pct}%"></i></div><span class="t3">${p.grabbed}/${p.shares}</span></div></td>
-    <td><span class="tag ${st.cls}">${st.text}</span></td>
+    <td class="c-id"><div class="cell-main"><b>#${id}</b><span class="tag">${t(`kind.${kind}`)}</span><span class="tag">${split}</span></div></td>
+    <td class="c-token"><div class="cell-main">${tokenIcon(tk)}${symHtml(tk)}</div></td>
+    <td class="right c-total">${esc(fmtNum(p.total, tk))}</td>
+    <td class="c-progress"><div class="bar"><div class="progress"><i style="width:${pct}%"></i></div><span class="t3">${p.grabbed}/${p.shares}</span></div></td>
+    <td class="c-status"><span class="tag ${st.cls}">${st.text}</span></td>
     <td class="hide-sm t3">${esc(when(p.expiry))}</td>
-    <td class="right"><a href="#/p/${id}">${t("view")}</a></td>
+    <td class="right c-view"><a href="#/p/${id}">${t("view")}</a></td>
   </tr>`;
 }
 
@@ -670,7 +674,7 @@ function setupCreateForm() {
       }
       if (n !== lookup) return;
       custom = tk;
-      info.innerHTML = `<b>${esc(tk.symbol)}</b>${tk.name ? ` · ${esc(tk.name)}` : ""} · ${t("tok.decimals", { n: tk.decimals })}${bal} · ${CFG.explorer ? extLink(`${CFG.explorer}/token/${address}`, esc(short(address))) : esc(short(address))}`;
+      info.innerHTML = `<b>${esc(tk.symbol)}</b>${tk.name ? ` · ${esc(tk.name)}` : ""} · ${t("tok.decimals", { n: tk.decimals })}${bal} · ${CFG.explorer ? extLink(`${CFG.explorer}/token/${address}`, esc(tokenAddress(address))) : esc(tokenAddress(address))}`;
     } catch (e) {
       if (n === lookup) info.innerHTML = `<span class="red">${esc(e.message || reason(e))}</span>`;
     }
@@ -979,7 +983,7 @@ async function pagePacket(id) {
       <span class="tag">${t(`kindFull.${kind}`)}</span><span class="tag">${splitName(p)}</span><span class="tag ${st.cls}">${st.text}</span>
       ${kind === 2 && Number(p.heatStep) ? `<span class="tag">${t("packet.heat", { n: p.heatStep })}</span>` : ""}
     </div>
-    <div class="two-col">
+    <div class="two-col packet-layout">
       <div class="stack">
         ${mine?.share ? `<div class="card"><div class="card-title"><h3 class="h-ico">${I.share}${t("packet.share")}</h3><button class="primary btn-sm" id="copy-share">${I.copy}${t("packet.copy")}</button></div><pre class="code">${esc(mine.share)}</pre></div>` : ""}
         <div class="card table-card">

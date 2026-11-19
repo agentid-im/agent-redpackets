@@ -42,7 +42,7 @@ export const DICT = {
     "demo.memo": "恭喜发财",
     "demo.shares": "5 份",
     "demo.me1": "帮我抢这个红包：AgentHongbao #12 · 码 K7Q2-9FMX-3HTB-W0RD · 口令 恭喜发财",
-    "demo.agent1": "预览通过 · 风险提示：无<br />调用合约 0xB147…2f04，确认后发送？",
+    "demo.agent1": "预览通过 · 风险提示：无<br />调用合约 {contract}，确认后发送？",
     "demo.me2": "确认",
     "demo.agent2": "<span class=\"ok\">已开奖</span>，你抢到 <b>0.0186 BNB</b>",
 
@@ -319,7 +319,7 @@ export const DICT = {
     "demo.memo": "Wishing you prosperity",
     "demo.shares": "5 shares",
     "demo.me1": "Grab this red packet for me: AgentHongbao #12 · code K7Q2-9FMX-3HTB-W0RD · passphrase Wishing you prosperity",
-    "demo.agent1": "Preview passed · risks: none<br />Calls contract 0xB147…2f04. Send it?",
+    "demo.agent1": "Preview passed · risks: none<br />Calls contract {contract}. Send it?",
     "demo.me2": "Confirm",
     "demo.agent2": "<span class=\"ok\">Opened</span>, you got <b>0.0186 BNB</b>",
 
