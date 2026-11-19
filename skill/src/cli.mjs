@@ -257,9 +257,21 @@ async function cmdGrab(ctx, pos, opt) {
   }
   let sig = "0x";
   if (p.signer !== ZeroAddress) {
-    if (!share.code && !share.passphrase) fail("这个红包需要红包码或口令，请把完整的分享文字发给我");
-    const key = claimKey(share.code, share.passphrase);
-    if (key.address !== p.signer) fail("红包码或口令不对");
+    // The passphrase the user said or the line names; else the greeting, which a sender's line
+    // leaves out as the passphrase when the two are the same; else none.
+    const tries = [...new Set([share.passphrase, share.memo, ""])];
+    const key = tries
+      .map((pass) => {
+        try {
+          return claimKey(share.code, pass);
+        } catch {
+          return null; // neither a code nor a passphrase
+        }
+      })
+      .find((k) => k && k.address === p.signer);
+    if (!key) {
+      fail(share.code || share.passphrase ? "红包码或口令不对：如果口令另外公布了，问用户口令是什么，再加 --pass <口令> 运行" : "这个红包需要红包码或口令，请把完整的分享文字发给我");
+    }
     sig = await signGrab(key, ctx.chainId, ctx.hb.target, share.id, from);
   }
   const lucky = view.split === "拼手气";

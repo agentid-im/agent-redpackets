@@ -21701,7 +21701,7 @@ function formatShare({ id: id2, code, passphrase, memo, includePassphrase = true
   const parts = [`\u{1F9E7} ${memo || L.packet}`, `AgentHongbao #${id2}`];
   if (code) parts.push(`${L.code} ${normalizeCode(code).match(/.{4}/g).join("-")}`);
   const p = normalizePassphrase(passphrase);
-  if (p && includePassphrase) parts.push(`${L.pass} ${p}`);
+  if (p && includePassphrase && p !== normalizePassphrase(memo)) parts.push(`${L.pass} ${p}`);
   return parts.join(" \xB7 ");
 }
 function parseShare(text, passphrase) {
@@ -21722,7 +21722,8 @@ function parseShare(text, passphrase) {
     inText = s.match(/(?:口令|\bpassphrase\b)\s*[:：]?\s*([^·|\n]+)/i)?.[1];
   }
   const p = normalizePassphrase(passphrase ?? inText ?? "");
-  return { id: id2 === void 0 ? null : BigInt(id2), code: code && normalizeCode(code), passphrase: p };
+  const memo = normalizePassphrase(line?.split(/[·|]/)[0].replace(/^\s*🧧/u, "") ?? "");
+  return { id: id2 === void 0 ? null : BigInt(id2), code: code && normalizeCode(code), passphrase: p, memo };
 }
 
 // lib/errors.mjs
@@ -22088,9 +22089,17 @@ async function cmdGrab(ctx, pos, opt) {
   }
   let sig = "0x";
   if (p.signer !== ZeroAddress) {
-    if (!share.code && !share.passphrase) fail("\u8FD9\u4E2A\u7EA2\u5305\u9700\u8981\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\uFF0C\u8BF7\u628A\u5B8C\u6574\u7684\u5206\u4EAB\u6587\u5B57\u53D1\u7ED9\u6211");
-    const key = claimKey(share.code, share.passphrase);
-    if (key.address !== p.signer) fail("\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\u4E0D\u5BF9");
+    const tries = [.../* @__PURE__ */ new Set([share.passphrase, share.memo, ""])];
+    const key = tries.map((pass) => {
+      try {
+        return claimKey(share.code, pass);
+      } catch {
+        return null;
+      }
+    }).find((k) => k && k.address === p.signer);
+    if (!key) {
+      fail(share.code || share.passphrase ? "\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\u4E0D\u5BF9\uFF1A\u5982\u679C\u53E3\u4EE4\u53E6\u5916\u516C\u5E03\u4E86\uFF0C\u95EE\u7528\u6237\u53E3\u4EE4\u662F\u4EC0\u4E48\uFF0C\u518D\u52A0 --pass <\u53E3\u4EE4> \u8FD0\u884C" : "\u8FD9\u4E2A\u7EA2\u5305\u9700\u8981\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\uFF0C\u8BF7\u628A\u5B8C\u6574\u7684\u5206\u4EAB\u6587\u5B57\u53D1\u7ED9\u6211");
+    }
     sig = await signGrab(key, ctx.chainId, ctx.hb.target, share.id, from);
   }
   const lucky = view.split === "\u62FC\u624B\u6C14";

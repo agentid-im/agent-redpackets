@@ -1112,6 +1112,17 @@ describe("share text and invite", () => {
     expect(share.parseShare(msg2).passphrase).to.equal("大吉大利");
   });
 
+  it("leaves out a passphrase equal to the greeting, and reports the greeting to try", () => {
+    const code = claim.newCode();
+    const line = share.formatShare({ id: 1n, code, passphrase: "恭喜发财", memo: "恭喜发财" });
+    expect(line).to.not.include("口令");
+    const parsed = share.parseShare(line);
+    expect(parsed.passphrase).to.equal("");
+    expect(parsed.memo).to.equal("恭喜发财");
+    expect(claim.claimKey(parsed.code, parsed.memo).address).to.equal(claim.claimKey(code, "恭喜发财").address);
+    expect(share.formatShare({ id: 1n, code, passphrase: "大吉大利", memo: "恭喜发财" })).to.include("口令 大吉大利");
+  });
+
   it("finds no passphrase in a guide-only message", () => {
     const msg = share.inviteText({ lead: "I sent red packet #3", url: "https://www.agentid.im/p/3?lang=en", skillUrl: "https://x/y.zip", lang: "en" });
     const parsed = share.parseShare(msg);
