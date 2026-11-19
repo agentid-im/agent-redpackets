@@ -13,3 +13,8 @@ deployments/localhost.json
 .dev.vars
 .wrangler/
 .DS_Store
+
+# Demo video: rendered output, generated card, narration takes
+video/out/
+video/assets/
+video/voice/
