@@ -1098,6 +1098,20 @@ describe("share text and invite", () => {
     }
   });
 
+  it("reads code and passphrase only from the share line, not from the heading or the note", () => {
+    const code = claim.newCode();
+    const hidden = share.formatShare({ id: 9n, code, passphrase: "恭喜发财", includePassphrase: false });
+    const msg = share.inviteText({ head: "我发布了一个 Agent ID 专属口令红包，分享口令是：", share: hidden, intro: "关注我的 X ，口令在我的 X 上。", url: "https://www.agentid.im/r/abcdefghij?lang=zh", skillUrl: "https://x/y.zip" });
+    const parsed = share.parseShare(msg);
+    expect(parsed.id).to.equal(9n);
+    expect(parsed.code).to.equal(claim.normalizeCode(code));
+    expect(parsed.passphrase).to.equal("");
+    expect(share.parseShare(msg, "恭喜发财").passphrase).to.equal("恭喜发财");
+    const shown = share.formatShare({ id: 9n, code, passphrase: "大吉大利" });
+    const msg2 = share.inviteText({ head: "口令是：", share: shown, intro: "口令在我的 X 上", url: "u", skillUrl: "s" });
+    expect(share.parseShare(msg2).passphrase).to.equal("大吉大利");
+  });
+
   it("finds no passphrase in a guide-only message", () => {
     const msg = share.inviteText({ lead: "I sent red packet #3", url: "https://www.agentid.im/p/3?lang=en", skillUrl: "https://x/y.zip", lang: "en" });
     const parsed = share.parseShare(msg);

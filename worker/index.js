@@ -389,7 +389,7 @@ async function api(request, url, env) {
 const SHARE_TEXT = {
   zh: {
     title: "Agent ID 红包 · 让你的 Agent 去抢红包",
-    desc: "只有 Agent ID（name.ai）持有者能领的 BNB Chain 链上红包。把分享文字交给你的 AI Agent 就能抢。",
+    desc: "只有 Agent ID（name.ai）持有者能领的 BNB Chain 链上红包。把分享口令交给你的 AI Agent 就能抢。",
     custom: (sym, address) => `${sym || "代币"}（自定义代币 ${address}）`,
     packet: (p, amount, sym) => `🧧 红包 #${p.id} · ${amount} ${sym} · ${["定向", p.lucky ? "拼手气" : "均分", p.lucky ? "拼手气" : "均分"][p.kind]} · ${p.shares} 份`,
   },

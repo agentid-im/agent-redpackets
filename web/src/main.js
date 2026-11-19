@@ -138,15 +138,17 @@ const packetUrl = (slug) => `${location.origin}/r/${slug}?lang=${lang}`;
 const HASHTAGS = "#BinanceWalletHackathon #AgenticWallet";
 const shareTexts = {};
 /** Group message with a first-timer guide, in the current language. */
-function invite(id, slug, share, intro) {
-  return inviteText({ share, intro, lead: t("share.linkText", { id }), url: packetUrl(slug), skillUrl: SKILL_URL, lang });
+/** Heading over the sender's share line: what kind of packet it is. */
+const shareHead = (type) => t(type === "public" ? "share.headPublic" : "share.headCode");
+function invite(id, slug, share, intro, type) {
+  return inviteText({ share, head: shareHead(type), intro, lead: t("share.linkText", { id }), url: packetUrl(slug), skillUrl: SKILL_URL, lang });
 }
 /** X, Telegram and copy buttons. share is the packet's share line, if the viewer has it. */
-function shareButtons(id, slug, share, intro) {
+function shareButtons(id, slug, share, intro, type) {
   const url = packetUrl(slug);
-  const full = invite(id, slug, share, intro);
+  const full = invite(id, slug, share, intro, type);
   shareTexts[id] = full;
-  const x = `https://x.com/intent/post?text=${encodeURIComponent(`${share || t("share.linkText", { id })}\n${t("share.xGuide")} ${url}\n${HASHTAGS}`)}`;
+  const x = `https://x.com/intent/post?text=${encodeURIComponent(`${share ? `${shareHead(type)}\n${share}` : t("share.linkText", { id })}\n${t("share.xGuide")} ${url}\n${HASHTAGS}`)}`;
   const tg = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(full)}`;
   return `<a class="btn btn-sm" href="${x}" target="_blank" rel="noreferrer">${I.xLogo}${t("share.x")}</a><a class="btn btn-sm" href="${tg}" target="_blank" rel="noreferrer">${I.plane}${t("share.tg")}</a><button type="button" class="btn-sm" data-copy-invite="${id}">${I.chat}${t("share.copyInvite")}</button><button type="button" class="btn-sm" data-copy-link="${slug}">${I.copy}${t("share.link")}</button>`;
 }
@@ -940,7 +942,7 @@ function showCreated(id, slug, type, share, code, passphrase, hidePass, intro) {
   box.innerHTML = `
     <div class="card result">
       <h3 class="ok-title">${I.checkCircle}${t("created.title", { id })}</h3>
-      ${share ? `<p>${t("created.share")}</p><pre class="code">${esc(invite(id, slug, share, intro))}</pre>` : `<p>${t("created.direct")}</p>`}
+      ${share ? `<p>${t("created.share")}</p><pre class="code">${esc(invite(id, slug, share, intro, type))}</pre>` : `<p>${t("created.direct")}</p>`}
       ${code ? `<div style="margin-top:12px">${notice(`${t("created.codeWarn")}${hidePass && passphrase ? t("created.passWarn", { pass: esc(passphrase) }) : ""}`, true)}</div>` : ""}
       ${type === "public" && !code ? `<p class="t3">${t("created.public", { id })}</p>` : ""}
       <div class="copy-row">
@@ -948,10 +950,10 @@ function showCreated(id, slug, type, share, code, passphrase, hidePass, intro) {
         <a class="btn btn-sm" href="#/r/${slug}">${t("created.view")}${I.arrowRight}</a>
       </div>
       <div class="divider"></div>
-      <div class="share-row">${shareButtons(id, slug, share, intro)}</div>
+      <div class="share-row">${shareButtons(id, slug, share, intro, type)}</div>
       ${code ? `<p class="form-hint share-warn">${t("share.publicWarn")}</p>` : ""}
     </div>`;
-  if (share) $("#copy-share").onclick = () => copy(invite(id, slug, share, intro));
+  if (share) $("#copy-share").onclick = () => copy(invite(id, slug, share, intro, type));
   bindShare(box);
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -1039,7 +1041,7 @@ async function pagePacket(id, slug, indexed) {
             <div class="kv-row"><span>${t("packet.contract")}</span><span>${CFG.explorer ? extLink(`${CFG.explorer}/address/${CFG.contract}`, short(CFG.contract)) : short(CFG.contract)}</span></div>
           </div>
           <div class="divider"></div>
-          <div class="share-row" id="share-row">${shareButtons(id, slug, mine?.share)}</div>
+          <div class="share-row" id="share-row">${shareButtons(id, slug, mine?.share, "", kind === 2 ? "public" : "code")}</div>
           ${mine?.share && mine.code ? `<p class="form-hint share-warn">${t("share.publicWarn")}</p>` : ""}
           ${canOpen || canRefund ? `<div class="actions">
             ${canOpen ? `<button id="open" class="btn-block">${I.spark}${t("packet.open", { n: p.grabbed - p.opened })}</button>` : ""}
@@ -1056,7 +1058,7 @@ async function pagePacket(id, slug, indexed) {
     .then(({ profile }) => {
       if (!profile || !$("#creator-profile")) return;
       $("#creator-profile").innerHTML = profileBlock(profile);
-      $("#share-row").innerHTML = shareButtons(id, slug, mine?.share, profile.intro);
+      $("#share-row").innerHTML = shareButtons(id, slug, mine?.share, profile.intro, kind === 2 ? "public" : "code");
       bindShare($("#share-row"));
     })
     .catch(() => {});

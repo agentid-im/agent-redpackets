@@ -21707,8 +21707,20 @@ function formatShare({ id: id2, code, passphrase, memo, includePassphrase = true
 function parseShare(text, passphrase) {
   const s = String(text ?? "");
   const id2 = s.match(/AgentHongbao\s*#\s*(\d+)/i)?.[1] ?? s.match(/#\s*(\d+)/)?.[1] ?? s.match(/^\s*(\d+)\s*$/)?.[1];
-  const code = s.match(CODE_PATTERN)?.[1] ?? null;
-  const inText = s.match(/(?:口令|\bpassphrase\b)\s*[:：]?\s*([^·|\n]+)/i)?.[1];
+  const line = s.split(/\r?\n/).find((l) => /AgentHongbao\s*#\s*\d+/i.test(l));
+  const code = (line ?? s).match(CODE_PATTERN)?.[1] ?? null;
+  let inText;
+  if (line) {
+    for (const part of line.split(/[·|]/)) {
+      const m = part.match(/^\s*(?:口令|passphrase)\s*[:：]?\s*(.+?)\s*$/i);
+      if (m) {
+        inText = m[1];
+        break;
+      }
+    }
+  } else {
+    inText = s.match(/(?:口令|\bpassphrase\b)\s*[:：]?\s*([^·|\n]+)/i)?.[1];
+  }
   const p = normalizePassphrase(passphrase ?? inText ?? "");
   return { id: id2 === void 0 ? null : BigInt(id2), code: code && normalizeCode(code), passphrase: p };
 }
@@ -22076,7 +22088,7 @@ async function cmdGrab(ctx, pos, opt) {
   }
   let sig = "0x";
   if (p.signer !== ZeroAddress) {
-    if (!share.code && !share.passphrase) fail("\u8FD9\u4E2A\u7EA2\u5305\u9700\u8981\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\uFF0C\u8BF7\u628A\u5B8C\u6574\u7684\u5206\u4EAB\u6587\u5B57\u53D1\u7ED9\u6211");
+    if (!share.code && !share.passphrase) fail("\u8FD9\u4E2A\u7EA2\u5305\u9700\u8981\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\uFF0C\u8BF7\u628A\u5B8C\u6574\u7684\u5206\u4EAB\u53E3\u4EE4\u53D1\u7ED9\u6211");
     const key = claimKey(share.code, share.passphrase);
     if (key.address !== p.signer) fail("\u7EA2\u5305\u7801\u6216\u53E3\u4EE4\u4E0D\u5BF9");
     sig = await signGrab(key, ctx.chainId, ctx.hb.target, share.id, from);
@@ -22231,7 +22243,7 @@ async function cmdCreate(ctx, pos, opt) {
   const id2 = await ctx.hb.packetCount() + 1n;
   const after = {
     expectedId: id2.toString(),
-    note: "\u7F16\u53F7\u4EE5\u4EA4\u6613\u4E0A\u94FE\u540E PacketCreated \u4E8B\u4EF6\u91CC\u7684 id \u4E3A\u51C6\uFF1B\u5982\u679C\u540C\u65F6\u6709\u522B\u4EBA\u53D1\u7EA2\u5305\uFF0C\u7F16\u53F7\u4F1A\u53D8\uFF0C\u7528 hongbao share \u91CD\u65B0\u751F\u6210\u5206\u4EAB\u6587\u5B57",
+    note: "\u7F16\u53F7\u4EE5\u4EA4\u6613\u4E0A\u94FE\u540E PacketCreated \u4E8B\u4EF6\u91CC\u7684 id \u4E3A\u51C6\uFF1B\u5982\u679C\u540C\u65F6\u6709\u522B\u4EBA\u53D1\u7EA2\u5305\uFF0C\u7F16\u53F7\u4F1A\u53D8\uFF0C\u7528 hongbao share \u91CD\u65B0\u751F\u6210\u5206\u4EAB\u53E3\u4EE4",
     ...t.custom ? { tokenWarning: `${customNote(t)}\u3002\u8BF7\u548C\u7528\u6237\u786E\u8BA4\u8FD9\u5C31\u662F\u8981\u53D1\u7684\u4EE3\u5E01\uFF1B\u8F6C\u8D26\u6536\u624B\u7EED\u8D39\u7684\u4EE3\u5E01\u4F1A\u88AB\u5408\u7EA6\u62D2\u7EDD` } : {}
   };
   if (type !== "direct") {
@@ -22266,7 +22278,7 @@ var HELP = `hongbao <command> [options]     (all output is JSON; nothing is ever
   create --type code|public|direct ...           \u751F\u6210\u53D1\u7EA2\u5305\u7684\u8C03\u7528
          --total 0.01 --shares 5 [--token BNB|USDT|USDC|0x\u4EE3\u5E01\u5730\u5740] [--ttl \u79D2] [--memo \u795D\u798F] [--pass \u53E3\u4EE4]
          [--equal] [--heat-step \u79D2] [--hide-pass]  |  --type direct --to alice=0.01,bob=0.02
-  share <id> [--code ..] [--pass ..]             \u91CD\u65B0\u751F\u6210\u5206\u4EAB\u6587\u5B57
+  share <id> [--code ..] [--pass ..]             \u91CD\u65B0\u751F\u6210\u5206\u4EAB\u53E3\u4EE4
   refund <id> --from 0x..                        \u53D1\u7EA2\u5305\u7684\u4EBA\u9000\u56DE\u672A\u9886\u5B8C\u90E8\u5206
   withdraw --from 0x.. [--token BNB] [--to 0x..] \u63D0\u53D6\u63A8\u9001\u5931\u8D25\u3001\u8BB0\u5728\u8D26\u4E0A\u7684\u91D1\u989D
   heat --from 0x..                               \u67E5\u770B\u516C\u5F00\u7EA2\u5305\u70ED\u5EA6
