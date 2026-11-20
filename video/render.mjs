@@ -15,7 +15,10 @@ const puppeteer = (await load("puppeteer-core", "/tmp/ahb-pp/node_modules/puppet
 const ffmpeg = (await load("ffmpeg-static", "/tmp/ahb-pp/node_modules/ffmpeg-static/index.js")).default;
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-export const SCENES = { 1: 7, 2: 9, 4: 10, 5: 18, 7: 11, 8: 6 }; // seconds; 3 and 6 are site recordings
+// Scene lengths follow the narration (schedule.mjs); 3 and 6 are site recordings (record.mjs).
+import { schedule } from "./schedule.mjs";
+const LENGTHS = Object.fromEntries(schedule().map((s) => [s.n, s.seconds]));
+export const SCENES = Object.fromEntries([1, 2, 4, 5, 7, 8].map((n) => [n, LENGTHS[n]]));
 const FPS = 30;
 
 async function packetCard() {
@@ -65,7 +68,7 @@ async function main() {
       continue;
     }
     const dir = fs.mkdtempSync(path.join(out, `frames-${s}-`));
-    const total = SCENES[s] * FPS;
+    const total = Math.round(SCENES[s] * FPS);
     for (let f = 0; f < total; f++) {
       await page.evaluate((ms) => window.seek(ms), (f * 1000) / FPS);
       await page.screenshot({ path: path.join(dir, `${String(f).padStart(5, "0")}.png`) });

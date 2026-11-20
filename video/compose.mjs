@@ -1,10 +1,13 @@
-// Joins the scenes (video/out/scene-N.mp4) into the demo video with English + Chinese subtitles,
-// and, when video/voice/vo-N.(m4a|mp3|wav) exist, lays the narration over its scene.
+// Joins the scenes (video/out/scene-N.mp4) into the demo video: subtitles in English with Chinese below,
+// each shown while its narration part is spoken, and the narration takes (video/voice/vo-N-K.mp3, made
+// by voice.mjs) laid at their scheduled times. A scene is held on its last frame when its narration runs
+// longer than the picture. See schedule.mjs for the timing.
 //   node video/compose.mjs            -> video/out/agent-id-red-packets.mp4
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { schedule } from "./schedule.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(here, "out");
@@ -12,45 +15,22 @@ const load = async (name, fallback) => (await import(process.env[`${name.toUpper
 const puppeteer = (await load("puppeteer-core", "/tmp/ahb-pp/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js")).default;
 const ffmpeg = (await load("ffmpeg-static", "/tmp/ahb-pp/node_modules/ffmpeg-static/index.js")).default;
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-
-// Scene order, length (s) and subtitle lines [English, 中文] as in video/script.md.
-const SCENES = [
-  [1, 7, [["Agent ID Red Packets: red packets on BNB Chain that only Agent ID holders can claim,", "Agent ID 红包：BNB Chain 上只有 Agent ID 持有者能领的红包，"], ["grabbed by your own AI agent.", "由你自己的 AI Agent 来抢。"]]],
-  [2, 9, [["Every person has one permanent Agent ID.", "每个人只有一个永久的 Agent ID。"], ["So one share per Agent ID really means one share per person,", "所以“每个 Agent ID 一份”就是“每人一份”，"], ["and new wallets don't help bots.", "机器人换再多钱包也没用。"]]],
-  [3, 17, [["Sending one takes a minute.", "发一个红包只要一分钟。"], ["Choose a code packet, set the amount and the number of shares, pick a passphrase.", "选口令红包，填金额和份数，选一个口令。"], ["BNB, USDT, USDC or any BSC token.", "BNB、USDT、USDC 或 BSC 上任意代币都行。"], ["Confirm, and it's on chain.", "确认后，红包就上链了。"]]],
-  [4, 10, [["Post the share text in your group.", "把分享文字发到群里。"], ["Every packet gets its own link and its own preview card.", "每个红包都有自己的链接和专属预览图。"]]],
-  [5, 18, [["Holders hand the text to their AI agent.", "领红包的人把分享文字交给自己的 AI Agent。"], ["It checks their Agent ID and previews the transaction in Binance Agentic Wallet,", "它会核对 Agent ID，在 Binance Agentic Wallet 里预览交易，"], ["and claims only after they confirm.", "本人确认后才领取。"]]],
-  [6, 10, [["Lucky amounts come from the hash of the block the grab lands in,", "拼手气金额由抢红包那个区块的哈希决定，"], ["so nobody can simulate a grab and cherry-pick.", "谁也没法先模拟、再挑金额。"]]],
-  [7, 11, [["An 80-bit share code keeps chain bots out.", "80 位随机红包码挡住链上机器人；"], ["Heavy grabbers of public packets wait in line.", "公开红包抢得多的人往后排。"], ["No owner, no fees, no upgrades, and the contract is verified on BscScan.", "合约没有管理员、不收手续费、不可升级，并在 BscScan 开源验证。"]]],
-  [8, 6, [["Try it at agentid.im, and let your agent grab red packets.", "来 agentid.im 试试，让你的 Agent 去抢红包。"]]],
-];
 const FADE = 0.3;
 
-// Narration, if recorded (video/voice/vo-N.m4a|mp3|wav): a scene lasts at least as long as its take
-// plus a short breath, holding its last frame when the take runs longer than the picture.
-const voice = path.join(here, "voice");
-const lengthOf = (f) => {
+const SCENES = schedule();
+
+/** Length of a scene's video, in seconds. */
+function videoLength(file) {
   try {
-    execFileSync(ffmpeg, ["-i", f], { stdio: "pipe" });
+    execFileSync(ffmpeg, ["-i", file], { stdio: "pipe" });
   } catch (e) {
     const m = String(e.stderr).match(/Duration: (\d+):(\d+):([\d.]+)/);
     if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3];
   }
   return 0;
-};
-const takes = {};
-for (const [n] of SCENES) {
-  const f = ["m4a", "mp3", "wav"].map((x) => path.join(voice, `vo-${n}.${x}`)).find((p) => fs.existsSync(p));
-  if (f) takes[n] = { f, length: lengthOf(f) };
-}
-const LEAD = 0.25; // narration starts this long after its scene
-for (const sc of SCENES) {
-  const t = takes[sc[0]];
-  if (t) sc.push(Math.max(sc[1], Math.ceil((LEAD + t.length + 0.6) * 10) / 10));
-  else sc.push(sc[1]);
 }
 
-/** Subtitle images: one transparent 1920x1080 PNG per line. */
+/** Subtitle images: one transparent 1920x1080 PNG per narration part. */
 async function subtitlePngs() {
   const dir = path.join(out, "subs");
   fs.rmSync(dir, { recursive: true, force: true });
@@ -59,24 +39,20 @@ async function subtitlePngs() {
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
   const items = [];
-  let start = 0;
-  for (const [, , lines, seconds] of SCENES) {
-    // Each line gets time in proportion to its English length.
-    const weight = lines.reduce((s, [en]) => s + en.length, 0);
-    let t = start;
-    for (const [en, zh] of lines) {
-      const d = (seconds * en.length) / weight;
+  let offset = 0;
+  for (const sc of SCENES) {
+    for (const p of sc.parts) {
       const file = path.join(dir, `${items.length}.png`);
       await page.setContent(`<html><body style="margin:0;width:1920px;height:1080px;background:transparent">
         <div style="position:absolute;left:0;right:0;margin:0 auto;width:fit-content;bottom:54px;max-width:1640px;padding:18px 34px 20px;border-radius:18px;background:rgba(11,14,17,.78);text-align:center;font-family:'IBM Plex Sans','Helvetica Neue',sans-serif">
-          <div style="font-size:38px;font-weight:600;color:#fff;line-height:1.3">${en}</div>
-          <div style="font-size:31px;color:#D7DBE0;line-height:1.4;margin-top:6px;font-family:'PingFang SC',sans-serif">${zh}</div>
+          <div style="font-size:38px;font-weight:600;color:#fff;line-height:1.3">${p.en}</div>
+          <div style="font-size:31px;color:#D7DBE0;line-height:1.4;margin-top:6px;font-family:'PingFang SC',sans-serif">${p.zh}</div>
         </div></body></html>`);
       await page.screenshot({ path: file, omitBackground: true });
-      items.push({ file, from: t, to: t + d });
-      t += d;
+      // Shown from just before the words begin to a moment after they end.
+      items.push({ file, from: offset + Math.max(0, p.start - 0.1), to: offset + Math.min(sc.seconds - FADE, p.end + 0.35) });
     }
-    start += seconds;
+    offset += sc.seconds;
   }
   await browser.close();
   return items;
@@ -85,40 +61,45 @@ async function subtitlePngs() {
 const subs = await subtitlePngs();
 const inputs = [];
 const filters = [];
-SCENES.forEach(([n, planned, , seconds], i) => {
-  inputs.push("-i", path.join(out, `scene-${n}.mp4`));
-  const hold = Math.max(0, seconds - planned);
-  filters.push(`[${i}:v]trim=duration=${planned},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)},format=yuv420p,fade=t=in:st=0:d=${FADE},fade=t=out:st=${(seconds - FADE).toFixed(2)}:d=${FADE}[v${i}]`);
+SCENES.forEach((sc, i) => {
+  const file = path.join(out, `scene-${sc.n}.mp4`);
+  inputs.push("-i", file);
+  const have = videoLength(file);
+  const hold = Math.max(0, sc.seconds - have);
+  filters.push(`[${i}:v]trim=duration=${Math.min(have, sc.seconds).toFixed(2)},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)},format=yuv420p,fade=t=in:st=0:d=${FADE},fade=t=out:st=${(sc.seconds - FADE).toFixed(2)}:d=${FADE}[v${i}]`);
 });
 filters.push(`${SCENES.map((_, i) => `[v${i}]`).join("")}concat=n=${SCENES.length}:v=1:a=0[base]`);
 let last = "base";
 subs.forEach((s, k) => {
   inputs.push("-i", s.file);
   const idx = SCENES.length + k;
-  filters.push(`[${last}][${idx}:v]overlay=0:0:enable='between(t,${s.from.toFixed(2)},${(s.to - 0.05).toFixed(2)})'[o${k}]`);
+  filters.push(`[${last}][${idx}:v]overlay=0:0:enable='between(t,${s.from.toFixed(2)},${s.to.toFixed(2)})'[o${k}]`);
   last = `o${k}`;
 });
 
-// Each take starts LEAD seconds into its scene.
-let audio = null;
+// Narration: each part at its scheduled time.
 const placed = [];
 let at = 0;
-for (const [n, , , seconds] of SCENES) {
-  if (takes[n]) placed.push({ f: takes[n].f, at: at + LEAD });
-  at += seconds;
+for (const sc of SCENES) {
+  for (const p of sc.parts) {
+    const f = path.join(here, "voice", `vo-${sc.n}-${p.k}.mp3`);
+    if (p.spoken && fs.existsSync(f)) placed.push({ f, at: at + p.start });
+  }
+  at += sc.seconds;
 }
+let audio = null;
 if (placed.length) {
   const base = inputs.length / 2;
   placed.forEach((tk, k) => {
     inputs.push("-i", tk.f);
     filters.push(`[${base + k}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${Math.round(tk.at * 1000)}|${Math.round(tk.at * 1000)}[a${k}]`);
   });
-  filters.push(`${placed.map((_, k) => `[a${k}]`).join("")}amix=inputs=${placed.length}:normalize=0[aout]`);
+  filters.push(`${placed.map((_, k) => `[a${k}]`).join("")}amix=inputs=${placed.length}:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[aout]`);
   audio = "[aout]";
 }
 
-const total = SCENES.reduce((s, sc) => s + sc[3], 0);
+const total = SCENES.reduce((s, sc) => s + sc.seconds, 0);
 const file = path.join(out, "agent-id-red-packets.mp4");
-execFileSync(ffmpeg, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", `[${last}]`, ...(audio ? ["-map", audio, "-c:a", "aac", "-b:a", "160k"] : []), "-t", String(total), "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", file]);
-console.log(`${file} (${total.toFixed(1)}s${audio ? `, narration on ${placed.length} scenes` : ", no narration yet"})`);
-for (const [n, planned, , seconds] of SCENES) if (takes[n]) console.log(`  scene ${n}: take ${takes[n].length.toFixed(1)}s, scene ${planned}s -> ${seconds}s`);
+execFileSync(ffmpeg, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", `[${last}]`, ...(audio ? ["-map", audio, "-c:a", "aac", "-b:a", "192k"] : []), "-t", total.toFixed(2), "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", file]);
+console.log(`${file} (${total.toFixed(1)}s${audio ? `, ${placed.length} narration parts` : ", no narration yet"})`);
+for (const sc of SCENES) console.log(`  scene ${sc.n}: ${sc.planned}s planned -> ${sc.seconds}s`);

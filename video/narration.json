@@ -1,0 +1,171 @@
+{
+  "model": "s2.1-pro-free",
+  "temperature": 0.6,
+  "top_p": 0.7,
+  "speed": 1.1,
+  "maxSpeed": 1.18,
+  "segments": [
+    {
+      "n": 1,
+      "scene": 7,
+      "parts": [
+        {
+          "at": 0.3,
+          "text": "[excited] Agent ID Red Packets. [break] Red packets on BNB Chain that only Agent ID holders can claim, grabbed by your own AI agent.",
+          "en": "Agent ID Red Packets: red packets on BNB Chain that only Agent ID holders can claim, grabbed by your own AI agent.",
+          "zh": "Agent ID 红包：BNB Chain 上只有 Agent ID 持有者能领的红包，由你自己的 AI Agent 来抢。"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "scene": 9,
+      "parts": [
+        {
+          "at": 0.4,
+          "text": "[confident] Every person has one permanent Agent ID.",
+          "en": "Every person has one permanent Agent ID.",
+          "zh": "每个人只有一个永久的 Agent ID。"
+        },
+        {
+          "at": 2.5,
+          "text": "[confident] So one share per Agent ID really means one share per person,",
+          "en": "So one share per Agent ID really means one share per person,",
+          "zh": "所以“每个 Agent ID 一份”就是“每人一份”，"
+        },
+        {
+          "at": 6.0,
+          "text": "[confident] and new wallets don't help bots.",
+          "en": "and new wallets don't help bots.",
+          "zh": "机器人换再多钱包也没用。"
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "scene": 17,
+      "parts": [
+        {
+          "at": 0.3,
+          "text": "[relaxed] Sending one takes a minute.",
+          "en": "Sending one takes a minute.",
+          "zh": "发一个红包只要一分钟。"
+        },
+        {
+          "at": 2.4,
+          "text": "[relaxed] Choose a code packet, set the amount, and the number of shares.",
+          "en": "Choose a code packet, set the amount, and the number of shares.",
+          "zh": "选口令红包，填金额和份数。"
+        },
+        {
+          "at": 4.4,
+          "text": "[relaxed] Pick a passphrase.",
+          "en": "Pick a passphrase.",
+          "zh": "再选一个口令。"
+        },
+        {
+          "at": 10.4,
+          "text": "[relaxed] BNB, USDT, USDC, or any BSC token.",
+          "en": "BNB, USDT, USDC, or any BSC token.",
+          "zh": "BNB、USDT、USDC 或 BSC 上任意代币都行。"
+        },
+        {
+          "at": 14.0,
+          "text": "[relaxed] Confirm, and it's on chain.",
+          "en": "Confirm, and it's on chain.",
+          "zh": "确认后，红包就上链了。"
+        }
+      ]
+    },
+    {
+      "n": 4,
+      "scene": 10,
+      "parts": [
+        {
+          "at": 0.6,
+          "text": "[happy] Post the share text in your group.",
+          "en": "Post the share text in your group.",
+          "zh": "把分享文字发到群里。"
+        },
+        {
+          "at": 2.8,
+          "text": "[happy] Every packet gets its own link, and its own preview card.",
+          "en": "Every packet gets its own link, and its own preview card.",
+          "zh": "每个红包都有自己的链接和专属预览图。"
+        }
+      ]
+    },
+    {
+      "n": 5,
+      "scene": 18,
+      "parts": [
+        {
+          "at": 0.7,
+          "text": "[confident] Holders hand the text to their AI agent.",
+          "en": "Holders hand the text to their AI agent.",
+          "zh": "领红包的人把分享文字交给自己的 AI Agent。"
+        },
+        {
+          "at": 3.4,
+          "text": "[confident] It checks their Agent ID, and previews the transaction in Binance Agentic Wallet,",
+          "en": "It checks their Agent ID, and previews the transaction in Binance Agentic Wallet,",
+          "zh": "它会核对 Agent ID，并在 Binance Agentic Wallet 里预览交易，"
+        },
+        {
+          "at": 10.6,
+          "text": "[confident] and claims only after they confirm.",
+          "en": "and claims only after they confirm.",
+          "zh": "本人确认后才领取。"
+        }
+      ]
+    },
+    {
+      "n": 6,
+      "scene": 10,
+      "parts": [
+        {
+          "at": 0.6,
+          "text": "[curious] Lucky amounts come from the hash of the block the grab lands in, so nobody can simulate a grab and cherry-pick.",
+          "en": "Lucky amounts come from the hash of the block the grab lands in, so nobody can simulate a grab and cherry-pick.",
+          "zh": "拼手气金额由抢红包那个区块的哈希决定，谁也没法先模拟、再挑金额。"
+        }
+      ]
+    },
+    {
+      "n": 7,
+      "scene": 11,
+      "parts": [
+        {
+          "at": 2.3,
+          "text": "[confident] An eighty-bit share code keeps chain bots out.",
+          "en": "An 80-bit share code keeps chain bots out.",
+          "zh": "80 位随机红包码挡住链上机器人。"
+        },
+        {
+          "at": 4.4,
+          "text": "[confident] Heavy grabbers of public packets wait in line.",
+          "en": "Heavy grabbers of public packets wait in line.",
+          "zh": "公开红包抢得多的人往后排。"
+        },
+        {
+          "at": 6.4,
+          "text": "[confident] No owner, no fees, no upgrades, and the contract is verified on B-S-C Scan.",
+          "en": "No owner, no fees, no upgrades, and the contract is verified on BscScan.",
+          "zh": "合约没有管理员、不收手续费、不可升级，并在 BscScan 开源验证。"
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "scene": 6,
+      "parts": [
+        {
+          "at": 0.5,
+          "text": "[delighted] Try it at agent I D dot I M, and let your agent grab red packets.",
+          "en": "Try it at agentid.im, and let your agent grab red packets.",
+          "zh": "来 agentid.im 试试，让你的 Agent 去抢红包。"
+        }
+      ]
+    }
+  ]
+}

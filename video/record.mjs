@@ -22,6 +22,10 @@ const dep = JSON.parse(fs.readFileSync(path.join(root, "deployments/localhost.js
 const out = path.join(here, "out");
 fs.mkdirSync(out, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Actions are timed to the narration (video/schedule.mjs): when each part of scene 3 is spoken.
+const { schedule } = await import("./schedule.mjs");
+const S3 = schedule().find((s) => s.n === 3);
+const P = Object.fromEntries(S3.parts.map((p) => [p.k, p]));
 
 // --- the agent side, as in scripts/rehearse.js
 const run = (file, args) => {
@@ -121,21 +125,22 @@ await sleep(800);
 await page.evaluate(() => scrollTo(0, 0));
 
 // Scene 3: send a code packet
+// Narration parts: 1 "Sending one takes a minute", 2 "Choose a code packet, set the amount, and the number
+// of shares", 3 "Pick a passphrase", 4 "BNB, USDT, USDC, or any BSC token", 5 "Confirm, and it's on chain".
 let share = "";
-// Narration: amount and shares, passphrase (to ~10.9 s), "any BSC token" (~10.9-14.3 s), confirm.
-await record(page, "scene-3", 17, async (at) => {
-  await at(0.8);
+await record(page, "scene-3", S3.seconds, async (at) => {
+  await at(P[2].start + 0.2);
   await point(page, 'input[name="total"]');
   await page.type('input[name="total"]', "0.1", { delay: 140 });
-  await at(4.2);
+  await at(P[3].start - 0.2);
   await point(page, 'input[name="pass"]');
   await page.type('input[name="pass"]', "Good luck", { delay: 110 });
-  await at(10.3);
+  await at(P[4].start + 2.2);
   await point(page, 'select[name="token"]', { click: false, settle: 500 });
   await page.select('select[name="token"]', "custom");
-  await at(13.2);
+  await at(P[4].end + 0.1);
   await page.select('select[name="token"]', "0x0000000000000000000000000000000000000000");
-  await at(13.9);
+  await at(P[5].start - 0.3);
   await point(page, '#create-form button[type="submit"]');
   await page.waitForSelector("#created .result", { visible: true, timeout: 20000 });
   await sleep(400);
