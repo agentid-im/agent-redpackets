@@ -148,7 +148,10 @@ function shareButtons(id, slug, share, intro, type) {
   const url = packetUrl(slug);
   const full = invite(id, slug, share, intro, type);
   shareTexts[id] = full;
-  const x = `https://x.com/intent/post?text=${encodeURIComponent(`${share ? `${shareHead(type)}\n${share}` : t("share.linkText", { id })}\n${t("share.xGuide")} ${url}\n${HASHTAGS}`)}`;
+  // X turns "name.ai" into a link to the .ai domain and previews that instead of our page, so it is
+  // written "name .ai" in text sent to X.
+  const xText = `${share ? `${shareHead(type)}\n${share}` : t("share.linkText", { id })}\n${t("share.xGuide")} ${url}\n${HASHTAGS}`.replace(/name\.ai/gi, "name .ai");
+  const x = `https://x.com/intent/post?text=${encodeURIComponent(xText)}`;
   const tg = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(full)}`;
   return `<a class="btn btn-sm" href="${x}" target="_blank" rel="noreferrer">${I.xLogo}${t("share.x")}</a><a class="btn btn-sm" href="${tg}" target="_blank" rel="noreferrer">${I.plane}${t("share.tg")}</a><button type="button" class="btn-sm" data-copy-invite="${id}">${I.chat}${t("share.copyInvite")}</button><button type="button" class="btn-sm" data-copy-link="${slug}">${I.copy}${t("share.link")}</button>`;
 }
