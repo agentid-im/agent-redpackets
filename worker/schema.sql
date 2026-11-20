@@ -57,3 +57,17 @@ CREATE TABLE IF NOT EXISTS tokens (
   listed INTEGER NOT NULL DEFAULT 0,
   checked INTEGER NOT NULL DEFAULT 0  -- unix seconds of the last lookup
 );
+
+-- The profile each packet was sent with. A packet without a row shows its sender's latest profile
+-- (packets from before per-packet profiles). source: 'signed' (the sender signed it for this packet)
+-- or 'snapshot' (the sender's profile at the time, copied when the packet was sent).
+CREATE TABLE IF NOT EXISTS packet_profiles (
+  packet_id INTEGER PRIMARY KEY,
+  address TEXT NOT NULL,          -- lowercase
+  x TEXT NOT NULL DEFAULT '',
+  telegram TEXT NOT NULL DEFAULT '',
+  intro TEXT NOT NULL DEFAULT '',
+  issued INTEGER NOT NULL,
+  signature TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL
+);

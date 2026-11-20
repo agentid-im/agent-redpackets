@@ -1132,3 +1132,21 @@ describe("share text and invite", () => {
     expect(parsed.passphrase).to.equal("");
   });
 });
+
+describe("sender profiles", () => {
+  const prof = require("../lib/profile.mjs");
+
+  it("binds a signed profile to its packet, and keeps the old unbound form", async () => {
+    const [signer] = await ethers.getSigners();
+    const profile = prof.normalizeProfile({ x: "agentid_im", telegram: "", intro: "Today's passphrase is on my X." });
+    const forOne = prof.profileMessage(signer.address, profile, 1795000000, 1n);
+    const forThree = prof.profileMessage(signer.address, profile, 1795000000, 3n);
+    expect(forOne).to.include("packet: #1");
+    expect(forOne).to.not.equal(forThree);
+    // A signature for packet #1 does not verify as one for packet #3.
+    const sig = await signer.signMessage(forOne);
+    expect(ethers.verifyMessage(forOne, sig)).to.equal(signer.address);
+    expect(ethers.verifyMessage(forThree, sig)).to.not.equal(signer.address);
+    expect(prof.profileMessage(signer.address, profile, 1795000000)).to.not.include("packet:");
+  });
+});

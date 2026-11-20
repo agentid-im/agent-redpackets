@@ -141,6 +141,15 @@ export async function indexOnce(env) {
               )
               .bind(Number(a.id), a.creator, Number(a.kind), a.token, a.total.toString(), Number(a.shares), Number(a.expiry), a.lucky ? 1 : 0, Number(a.heatStep), a.memo, block, packetSlug(log.transactionHash, a.id))
           );
+          // The packet keeps its sender's profile of the moment (packets sent by agents never post one).
+          stmts.push(
+            db
+              .prepare(
+                `INSERT OR IGNORE INTO packet_profiles (packet_id, address, x, telegram, intro, issued, signature, source)
+                 SELECT ?, address, x, telegram, intro, issued, signature, 'snapshot' FROM profiles WHERE address = ?`
+              )
+              .bind(Number(a.id), a.creator.toLowerCase())
+          );
           break;
         case "Grabbed":
           stmts.push(
@@ -261,39 +270,110 @@ async function saveProfile(request, env) {
   const issued = Number(body.issued);
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isInteger(issued) || Math.abs(now - issued) > PROFILE_WINDOW) return json({ error: "stale signature" }, 400, 0);
-  let signer;
+  let packetId;
   try {
-    signer = verifyMessage(profileMessage(address, profile, issued), String(body.signature));
+    packetId = BigInt(body.packetId);
   } catch {
-    signer = null;
+    return json({ error: "no such packet" }, 403, 0);
   }
-  if (!signer || signer.toLowerCase() !== address.toLowerCase()) return json({ error: "bad signature" }, 401, 0);
+  // Current clients sign the packet id too; older ones did not.
+  const signedBy = (msg) => {
+    try {
+      return verifyMessage(msg, String(body.signature)).toLowerCase();
+    } catch {
+      return null;
+    }
+  };
+  const key = address.toLowerCase();
+  const forPacket = signedBy(profileMessage(address, profile, issued, packetId)) === key;
+  if (!forPacket && signedBy(profileMessage(address, profile, issued)) !== key) return json({ error: "bad signature" }, 401, 0);
 
   // Only someone who has sent a red packet may publish a profile.
   try {
-    const out = await rpc(env, "eth_call", [{ to: env.CONTRACT, data: hb.encodeFunctionData("getPacket", [BigInt(body.packetId)]) }, "latest"]);
+    const out = await rpc(env, "eth_call", [{ to: env.CONTRACT, data: hb.encodeFunctionData("getPacket", [packetId]) }, "latest"]);
     const packet = hb.decodeFunctionResult("getPacket", out)[0];
     if (packet.creator.toLowerCase() !== address.toLowerCase()) return json({ error: "not the sender of that packet" }, 403, 0);
   } catch {
     return json({ error: "no such packet" }, 403, 0);
   }
 
-  const key = address.toLowerCase();
+  const id = Number(packetId);
+  const prevPacket = await db.prepare("SELECT issued FROM packet_profiles WHERE packet_id = ?").bind(id).first();
+  if (prevPacket && prevPacket.issued >= issued) return json({ error: "older than the saved profile" }, 409, 0);
+  // The sender's other packets keep the profile they were sent with: freeze it before it changes.
+  await freezeProfiles(db, key, id);
+  await db
+    .prepare("INSERT OR REPLACE INTO packet_profiles (packet_id, address, x, telegram, intro, issued, signature, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'signed')")
+    .bind(id, key, profile.x, profile.telegram, profile.intro, issued, String(body.signature))
+    .run();
+  // The address's latest profile fills the Send form next time; editing an older packet leaves it.
   const prev = await db.prepare("SELECT issued FROM profiles WHERE address = ?").bind(key).first();
-  if (prev && prev.issued >= issued) return json({ error: "older than the saved profile" }, 409, 0);
-  if (isEmptyProfile(profile)) {
-    await db.prepare("DELETE FROM profiles WHERE address = ?").bind(key).run();
-  } else {
-    await db
-      .prepare("INSERT OR REPLACE INTO profiles (address, x, telegram, intro, issued, signature) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(key, profile.x, profile.telegram, profile.intro, issued, String(body.signature))
-      .run();
+  const newer = await db.prepare("SELECT 1 AS n FROM packets WHERE lower(creator) = ? AND id > ? LIMIT 1").bind(key, id).first();
+  if (!newer && (!prev || prev.issued < issued)) {
+    if (isEmptyProfile(profile)) {
+      await db.prepare("DELETE FROM profiles WHERE address = ?").bind(key).run();
+    } else {
+      await db
+        .prepare("INSERT OR REPLACE INTO profiles (address, x, telegram, intro, issued, signature) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(key, profile.x, profile.telegram, profile.intro, issued, String(body.signature))
+        .run();
+    }
   }
   return json({ ok: true, profile }, 200, 0);
 }
 
+/** Copies a sender's current profile onto their packets that have none yet (all but `except`). */
+function freezeProfiles(db, address, except = -1) {
+  return db
+    .prepare(
+      `INSERT OR IGNORE INTO packet_profiles (packet_id, address, x, telegram, intro, issued, signature, source)
+       SELECT p.id, pr.address, pr.x, pr.telegram, pr.intro, pr.issued, pr.signature, 'snapshot'
+       FROM packets p JOIN profiles pr ON pr.address = lower(p.creator) WHERE pr.address = ? AND p.id != ?`
+    )
+    .bind(address, except)
+    .run();
+}
+
+/**
+ * A packet sent with an unchanged profile keeps a copy of it, so a later change does not reach it.
+ * Needs no signature: it only copies the sender's own current profile onto the sender's own packet,
+ * and never over one the packet already has.
+ */
+async function keepProfile(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "bad json" }, 400, 0);
+  }
+  let packetId;
+  let creator;
+  try {
+    packetId = BigInt(body.packetId);
+    const out = await rpc(env, "eth_call", [{ to: env.CONTRACT, data: hb.encodeFunctionData("getPacket", [packetId]) }, "latest"]);
+    creator = hb.decodeFunctionResult("getPacket", out)[0].creator.toLowerCase();
+  } catch {
+    return json({ error: "no such packet" }, 404, 0);
+  }
+  await env.DB
+    .prepare(
+      `INSERT OR IGNORE INTO packet_profiles (packet_id, address, x, telegram, intro, issued, signature, source)
+       SELECT ?, address, x, telegram, intro, issued, signature, 'snapshot' FROM profiles WHERE address = ?`
+    )
+    .bind(Number(packetId), creator)
+    .run();
+  return json({ ok: true }, 200, 0);
+}
+
 const profileOf = (db, address) =>
   db.prepare("SELECT x, telegram, intro FROM profiles WHERE address = ?").bind(String(address).toLowerCase()).first();
+
+/** The profile a packet was sent with; for packets from before that existed, the sender's latest. */
+async function packetProfile(db, id, creator) {
+  const row = await db.prepare("SELECT x, telegram, intro FROM packet_profiles WHERE packet_id = ?").bind(Number(id)).first();
+  if (row) return isEmptyProfile(row) ? null : row;
+  return (await profileOf(db, creator)) ?? null;
+}
 
 const TOKEN_JOIN = "LEFT JOIN tokens t ON t.address = lower(p.token)";
 const TOKEN_COLS = "t.symbol AS token_symbol, t.decimals AS token_decimals, t.listed AS token_listed";
@@ -303,6 +383,7 @@ async function api(request, url, env, ctx) {
   const db = env.DB;
   const path = url.pathname.replace(/\/+$/, "");
   if (path === "/api/profile" && request.method === "POST") return saveProfile(request, env);
+  if (path === "/api/profile/keep" && request.method === "POST") return keepProfile(request, env);
   if (path === "/api/fees") {
     // What one claim costs the claimer: gas price now, and BNB's USD price for stablecoin packets.
     // Kept for a minute at the edge, so the node is asked at most once a minute however many
@@ -388,7 +469,7 @@ async function api(request, url, env, ctx) {
       .prepare("SELECT who, slot, handle, amount, floored, block FROM claims WHERE packet_id = ? ORDER BY slot IS NULL, slot, block")
       .bind(id)
       .all();
-    return json({ packet, claims: results, profile: (await profileOf(db, packet.creator)) ?? null });
+    return json({ packet, claims: results, profile: await packetProfile(db, packet.id, packet.creator) });
   }
   return json({ error: "not found" }, 404, 60);
 }
@@ -458,7 +539,7 @@ async function sharePage(request, env, url, slug) {
         const amount = t?.decimals == null ? String(p.total) : formatUnits(BigInt(p.total), decimals).replace(/\.0+$|(\.\d*?)0+$/, "$1");
         const sym = t?.listed ? t.symbol : T.custom(displaySymbol(t?.symbol, false), tokenAddress(String(p.token)));
         title = T.packet(p, amount, sym);
-        const profile = await profileOf(env.DB, p.creator);
+        const profile = await packetProfile(env.DB, p.id, p.creator);
         if (profile?.intro) desc = `💬 ${profile.intro} · ${desc}`;
       }
     } catch {

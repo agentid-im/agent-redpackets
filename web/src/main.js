@@ -877,25 +877,38 @@ function readProfile(f) {
 }
 
 /** Signs and stores the sender profile when it changed; the packet is already sent either way. */
+/**
+ * Gives a packet its sender profile. A changed profile is signed for this packet (one signature); an
+ * unchanged one is copied onto the packet without a signature, so later changes do not reach it.
+ */
 async function publishProfile(profile, packetId) {
   const same = savedProfile && profile.x === savedProfile.x && profile.telegram === savedProfile.telegram && profile.intro === savedProfile.intro;
-  if (same || (isEmptyProfile(profile) && !savedProfile)) return;
+  if (isEmptyProfile(profile) && !savedProfile) return;
+  if (same) {
+    fetch("/api/profile/keep", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ packetId: packetId.toString() }) }).catch(() => {});
+    return;
+  }
   try {
-    toast(t("prof.saving"));
-    const issued = Math.floor(Date.now() / 1000);
-    const signature = await state.signer.signMessage(profileMessage(state.address, profile, issued));
-    const res = await fetch("/api/profile", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ address: state.address, ...profile, issued, signature, packetId: packetId.toString() }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    await signProfile(profile, packetId);
     savedProfile = profile;
     toast(t("prof.saved"), "ok");
   } catch (e) {
     toast(t("prof.failed", { reason: reason(e) }), "error");
   }
+}
+
+/** Signs `profile` for packet `packetId` and stores it. */
+async function signProfile(profile, packetId) {
+  toast(t("prof.saving"));
+  const issued = Math.floor(Date.now() / 1000);
+  const signature = await state.signer.signMessage(profileMessage(state.address, profile, issued, packetId.toString()));
+  const res = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address: state.address, ...profile, issued, signature, packetId: packetId.toString() }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
 }
 
 async function createPacket(type, f) {
@@ -989,6 +1002,38 @@ function showCreated(id, slug, type, share, code, passphrase, hidePass, intro) {
 
 // ------------------------------------------------------------- packet page
 
+/** Lets a packet's sender change the profile shown on that packet only. */
+function editProfile(id, current, show) {
+  const box = $("#creator-edit");
+  const v = current ?? { x: "", telegram: "", intro: "" };
+  box.innerHTML = `<form class="profile-edit">
+    <p class="form-hint">${t("prof.editHint")}</p>
+    <label class="field"><div class="field-head"><b>${t("prof.x")}</b></div><input name="px" value="${esc(v.x)}" placeholder="@yourname" autocomplete="off" /></label>
+    <label class="field"><div class="field-head"><b>${t("prof.tg")}</b></div><input name="ptg" value="${esc(v.telegram)}" placeholder="t.me/yourgroup" autocomplete="off" /></label>
+    <label class="field"><div class="field-head"><b>${t("prof.intro")}</b></div><input name="pintro" value="${esc(v.intro)}" maxlength="${INTRO_MAX}" placeholder="${esc(t("prof.introPh"))}" autocomplete="off" /></label>
+    <div class="copy-row"><button class="primary btn-sm" type="submit">${t("prof.save")}</button><button class="btn-sm" type="button" id="edit-cancel">${t("prof.cancel")}</button></div>
+  </form>`;
+  const restore = () => (box.innerHTML = `<button type="button" class="btn-text" id="edit-profile">${t("prof.edit")}</button>`, ($("#edit-profile").onclick = () => editProfile(id, current, show)));
+  $("#edit-cancel").onclick = restore;
+  box.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    if (!requireWallet()) return;
+    const btn = box.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      const profile = readProfile(new FormData(e.target));
+      await signProfile(profile, id);
+      current = isEmptyProfile(profile) ? null : profile;
+      show(current);
+      toast(t("prof.saved"), "ok");
+      restore();
+    } catch (err) {
+      toast(reason(err), "error");
+      btn.disabled = false;
+    }
+  };
+}
+
 /** Opens a packet from its link code: the index resolves it; a sender's own record works before that. */
 async function openPacket(slug) {
   if (!SLUG_RE.test(slug)) return notFound();
@@ -1068,6 +1113,7 @@ async function pagePacket(id, slug, indexed) {
             ${p.lucky ? `<div class="kv-row"><span>${t("packet.floor")}</span><span>${esc(fmt(p.unit, token))}</span></div>` : ""}
             <div class="kv-row"><span>${t("packet.creator")}</span><span id="creator-name">${esc(short(p.creator))}</span></div>
             <div id="creator-profile"></div>
+            ${isCreator ? `<div id="creator-edit"><button type="button" class="btn-text" id="edit-profile">${t("prof.edit")}</button></div>` : ""}
             <div class="kv-row"><span>${expired ? t("packet.expiredAt") : t("packet.expiry")}</span><span>${esc(when(p.expiry))}</span></div>
             <div class="kv-row"><span>${t("packet.contract")}</span><span>${CFG.explorer ? extLink(`${CFG.explorer}/address/${CFG.contract}`, short(CFG.contract)) : short(CFG.contract)}</span></div>
           </div>
@@ -1085,14 +1131,17 @@ async function pagePacket(id, slug, indexed) {
 
   handleOf(p.creator).then((h) => h && $("#creator-name") && ($("#creator-name").textContent = `${h}.ai`));
   bindShare(app);
-  api(`/profiles/${p.creator}`)
-    .then(({ profile }) => {
-      if (!profile || !$("#creator-profile")) return;
-      $("#creator-profile").innerHTML = profileBlock(profile);
-      $("#share-row").innerHTML = shareButtons(id, slug, mine?.share, profile.intro, kind === 2 ? "public" : "code");
-      bindShare($("#share-row"));
-    })
-    .catch(() => {});
+  // The profile this packet was sent with (the index has it); a packet not indexed yet shows the sender's latest.
+  let shownProfile = null;
+  const showProfile = (profile) => {
+    shownProfile = profile;
+    if (!$("#creator-profile")) return;
+    $("#creator-profile").innerHTML = profile ? profileBlock(profile) : "";
+    $("#share-row").innerHTML = shareButtons(id, slug, mine?.share, profile?.intro, kind === 2 ? "public" : "code");
+    bindShare($("#share-row"));
+  };
+  (indexed ? Promise.resolve({ profile: indexed.profile }) : api(`/profiles/${p.creator}`)).then(({ profile }) => showProfile(profile)).catch(() => {});
+  if (isCreator) $("#edit-profile").onclick = () => editProfile(id, shownProfile, showProfile);
   if (mine?.share) $("#copy-share").onclick = () => copy(mine.share);
   const act = (sel, fn) => {
     const b = $(sel);
