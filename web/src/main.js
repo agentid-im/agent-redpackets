@@ -26,7 +26,16 @@ const hbLogs = CFG.contract ? new Contract(CFG.contract, abi, logsReader) : null
 let registryRead = null;
 const handleCache = new Map();
 
-const state = { signer: null, address: null, via: null };
+const state = { signer: null, address: null, via: null, eth: null };
+
+// Browser wallets announce themselves (EIP-6963), so a browser with several can pick which one to use.
+const wallets = [];
+window.addEventListener("eip6963:announceProvider", (e) => {
+  const w = e.detail;
+  if (!w?.provider || !w.info?.uuid || wallets.some((x) => x.info.uuid === w.info.uuid)) return;
+  wallets.push(w);
+});
+window.dispatchEvent(new Event("eip6963:requestProvider"));
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $("#app");
@@ -232,7 +241,9 @@ function renderWallet() {
   if (state.address) {
     el.innerHTML = `<span class="addr" title="${esc(state.address)}"><i></i>${esc(short(state.address))}</span><button class="btn-sm" id="disconnect">${t("wallet.disconnect")}</button>`;
     $("#disconnect").onclick = () => {
-      Object.assign(state, { signer: null, address: null, via: null });
+      // Let the wallet forget this site too, so the next connect asks which account to use.
+      if (state.via === "injected") state.eth?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
+      Object.assign(state, { signer: null, address: null, via: null, eth: null });
       renderWallet();
       route(true);
     };
@@ -246,25 +257,63 @@ function renderWallet() {
           .join("")}</select>`
       : ""
   }<button id="connect" class="primary btn-sm">${I.wallet}<span class="hide-xs">${t("wallet.connect")}</span></button>`;
-  $("#connect").onclick = connectInjected;
+  $("#connect").onclick = chooseWallet;
   if (tests.length) $("#test-account").onchange = (e) => e.target.value && connectTest(e.target.value);
 }
 
-async function connectInjected() {
-  if (!window.ethereum) return toast(t("wallet.none"), "error");
+/** Connects the one browser wallet there is, or lets the user pick when there are several. */
+function chooseWallet() {
+  if (wallets.length < 2) return connectInjected(wallets[0]?.provider ?? window.ethereum);
+  const el = $("#wallet");
+  if ($(".wallet-menu", el)) return $(".wallet-menu", el).remove();
+  const menu = document.createElement("div");
+  menu.className = "wallet-menu";
+  menu.innerHTML = `<p>${t("wallet.pick")}</p>${wallets
+    .map((w, i) => `<button type="button" data-i="${i}">${/^data:image\//.test(w.info.icon || "") ? `<img src="${esc(w.info.icon)}" alt="" />` : ""}<span>${esc(w.info.name || "Wallet")}</span></button>`)
+    .join("")}`;
+  el.append(menu);
+  const close = (e) => {
+    if (menu.contains(e.target) || e.target.closest?.("#connect")) return;
+    menu.remove();
+    document.removeEventListener("click", close, true);
+  };
+  document.addEventListener("click", close, true);
+  menu.onclick = (e) => {
+    const b = e.target.closest("button[data-i]");
+    if (!b) return;
+    menu.remove();
+    document.removeEventListener("click", close, true);
+    connectInjected(wallets[Number(b.dataset.i)].provider);
+  };
+}
+
+async function connectInjected(eth) {
+  if (!eth) return toast(t("wallet.none"), "error");
   try {
-    const provider = new BrowserProvider(window.ethereum);
+    const provider = new BrowserProvider(eth);
+    // Ask the wallet to show its account picker; a wallet that remembers this site would otherwise
+    // hand back the same account every time. Wallets without it fall back to a plain request.
+    try {
+      await provider.send("wallet_requestPermissions", [{ eth_accounts: {} }]);
+    } catch (e) {
+      if (e?.code === 4001 || e?.error?.code === 4001 || e?.code === "ACTION_REJECTED") throw e;
+    }
     await provider.send("eth_requestAccounts", []);
     const net = await provider.getNetwork();
     if (net.chainId !== BigInt(CFG.chainId)) {
       await provider.send("wallet_switchEthereumChain", [{ chainId: `0x${CFG.chainId.toString(16)}` }]);
     }
-    const p = new BrowserProvider(window.ethereum);
+    const p = new BrowserProvider(eth);
     state.signer = await p.getSigner();
     state.address = await state.signer.getAddress();
     state.via = "injected";
-    window.ethereum.on?.("accountsChanged", () => location.reload());
-    window.ethereum.on?.("chainChanged", () => location.reload());
+    state.eth = eth;
+    if (!eth.__ahbWatched) {
+      eth.__ahbWatched = true;
+      // Switching the account inside the wallet switches it here (only while this wallet is the one connected).
+      eth.on?.("accountsChanged", () => state.eth === eth && location.reload());
+      eth.on?.("chainChanged", () => state.eth === eth && location.reload());
+    }
   } catch (e) {
     return toast(reason(e), "error");
   }

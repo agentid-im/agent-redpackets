@@ -118,6 +118,12 @@ main { flex: 1; }
 .wallet .addr { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: var(--r); background: var(--input); font-size: 13px; font-family: ui-monospace, monospace; }
 .wallet .addr i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .wallet select { height: 32px; padding: 0 28px 0 10px; font-size: 13px; width: auto; }
+.wallet { position: relative; }
+.wallet-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: 220px; padding: 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); box-shadow: var(--shadow); }
+.wallet-menu p { margin: 4px 8px 8px; color: var(--t3); font-size: 12px; }
+.wallet-menu button { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 10px; background: none; color: var(--t1); font-size: 14px; justify-content: flex-start; }
+.wallet-menu button:hover { background: var(--hover); }
+.wallet-menu img { width: 22px; height: 22px; border-radius: 4px; }
 
 /* ------------------------------------------------------------------- icons */
 
