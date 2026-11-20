@@ -299,12 +299,18 @@ const TOKEN_JOIN = "LEFT JOIN tokens t ON t.address = lower(p.token)";
 const TOKEN_COLS = "t.symbol AS token_symbol, t.decimals AS token_decimals, t.listed AS token_listed";
 const LISTED = `(lower(p.token) = '${NATIVE}' OR t.listed = 1)`;
 
-async function api(request, url, env) {
+async function api(request, url, env, ctx) {
   const db = env.DB;
   const path = url.pathname.replace(/\/+$/, "");
   if (path === "/api/profile" && request.method === "POST") return saveProfile(request, env);
   if (path === "/api/fees") {
     // What one claim costs the claimer: gas price now, and BNB's USD price for stablecoin packets.
+    // Kept for a minute at the edge, so the node is asked at most once a minute however many
+    // people open the Send page.
+    const cache = caches.default;
+    const key = new Request(`${url.origin}/api/fees`);
+    const hit = await cache.match(key);
+    if (hit) return hit;
     const gasPrice = BigInt(await rpc(env, "eth_gasPrice", [])).toString();
     let bnbUsd = null;
     for (const u of ["https://data-api.binance.vision/api/v3/ticker/price?symbol=BNBUSDT", "https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT"]) {
@@ -330,7 +336,9 @@ async function api(request, url, env) {
         /* unknown price: the site assumes a high one */
       }
     }
-    return json({ gasPrice, bnbUsd, claimGas: 120000 }, 200, 60);
+    const res = json({ gasPrice, bnbUsd, claimGas: 120000, at: Math.floor(Date.now() / 1000) }, 200, 60);
+    ctx.waitUntil(cache.put(key, res.clone()));
+    return res;
   }
   const tm = path.match(/^\/api\/tokens\/(0x[0-9a-fA-F]{40})$/);
   if (tm) {
@@ -492,7 +500,7 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       try {
-        return await api(request, url, env);
+        return await api(request, url, env, ctx);
       } catch (e) {
         return json({ error: String(e?.message || e) }, 500, 0);
       }
