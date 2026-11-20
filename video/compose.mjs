@@ -26,6 +26,30 @@ const SCENES = [
 ];
 const FADE = 0.3;
 
+// Narration, if recorded (video/voice/vo-N.m4a|mp3|wav): a scene lasts at least as long as its take
+// plus a short breath, holding its last frame when the take runs longer than the picture.
+const voice = path.join(here, "voice");
+const lengthOf = (f) => {
+  try {
+    execFileSync(ffmpeg, ["-i", f], { stdio: "pipe" });
+  } catch (e) {
+    const m = String(e.stderr).match(/Duration: (\d+):(\d+):([\d.]+)/);
+    if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3];
+  }
+  return 0;
+};
+const takes = {};
+for (const [n] of SCENES) {
+  const f = ["m4a", "mp3", "wav"].map((x) => path.join(voice, `vo-${n}.${x}`)).find((p) => fs.existsSync(p));
+  if (f) takes[n] = { f, length: lengthOf(f) };
+}
+const LEAD = 0.25; // narration starts this long after its scene
+for (const sc of SCENES) {
+  const t = takes[sc[0]];
+  if (t) sc.push(Math.max(sc[1], Math.ceil((LEAD + t.length + 0.6) * 10) / 10));
+  else sc.push(sc[1]);
+}
+
 /** Subtitle images: one transparent 1920x1080 PNG per line. */
 async function subtitlePngs() {
   const dir = path.join(out, "subs");
@@ -36,7 +60,7 @@ async function subtitlePngs() {
   await page.setViewport({ width: 1920, height: 1080 });
   const items = [];
   let start = 0;
-  for (const [, seconds, lines] of SCENES) {
+  for (const [, , lines, seconds] of SCENES) {
     // Each line gets time in proportion to its English length.
     const weight = lines.reduce((s, [en]) => s + en.length, 0);
     let t = start;
@@ -61,9 +85,10 @@ async function subtitlePngs() {
 const subs = await subtitlePngs();
 const inputs = [];
 const filters = [];
-SCENES.forEach(([n, seconds], i) => {
+SCENES.forEach(([n, planned, , seconds], i) => {
   inputs.push("-i", path.join(out, `scene-${n}.mp4`));
-  filters.push(`[${i}:v]trim=duration=${seconds},setpts=PTS-STARTPTS,fps=30,format=yuv420p,fade=t=in:st=0:d=${FADE},fade=t=out:st=${seconds - FADE}:d=${FADE}[v${i}]`);
+  const hold = Math.max(0, seconds - planned);
+  filters.push(`[${i}:v]trim=duration=${planned},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)},format=yuv420p,fade=t=in:st=0:d=${FADE},fade=t=out:st=${(seconds - FADE).toFixed(2)}:d=${FADE}[v${i}]`);
 });
 filters.push(`${SCENES.map((_, i) => `[v${i}]`).join("")}concat=n=${SCENES.length}:v=1:a=0[base]`);
 let last = "base";
@@ -74,27 +99,26 @@ subs.forEach((s, k) => {
   last = `o${k}`;
 });
 
-// Narration, if recorded: each take starts with its scene.
-const voice = path.join(here, "voice");
+// Each take starts LEAD seconds into its scene.
 let audio = null;
-const takes = [];
+const placed = [];
 let at = 0;
-for (const [n, seconds] of SCENES) {
-  const f = ["m4a", "mp3", "wav"].map((x) => path.join(voice, `vo-${n}.${x}`)).find((p) => fs.existsSync(p));
-  if (f) takes.push({ f, at });
+for (const [n, , , seconds] of SCENES) {
+  if (takes[n]) placed.push({ f: takes[n].f, at: at + LEAD });
   at += seconds;
 }
-if (takes.length) {
+if (placed.length) {
   const base = inputs.length / 2;
-  takes.forEach((tk, k) => {
+  placed.forEach((tk, k) => {
     inputs.push("-i", tk.f);
-    filters.push(`[${base + k}:a]adelay=${Math.round(tk.at * 1000)}|${Math.round(tk.at * 1000)}[a${k}]`);
+    filters.push(`[${base + k}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${Math.round(tk.at * 1000)}|${Math.round(tk.at * 1000)}[a${k}]`);
   });
-  filters.push(`${takes.map((_, k) => `[a${k}]`).join("")}amix=inputs=${takes.length}:normalize=0[aout]`);
+  filters.push(`${placed.map((_, k) => `[a${k}]`).join("")}amix=inputs=${placed.length}:normalize=0[aout]`);
   audio = "[aout]";
 }
 
-const total = SCENES.reduce((s, [, d]) => s + d, 0);
+const total = SCENES.reduce((s, sc) => s + sc[3], 0);
 const file = path.join(out, "agent-id-red-packets.mp4");
 execFileSync(ffmpeg, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", `[${last}]`, ...(audio ? ["-map", audio, "-c:a", "aac", "-b:a", "160k"] : []), "-t", String(total), "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", file]);
-console.log(`${file} (${total}s${audio ? ", with narration" : ", no narration yet"})`);
+console.log(`${file} (${total.toFixed(1)}s${audio ? `, narration on ${placed.length} scenes` : ", no narration yet"})`);
+for (const [n, planned, , seconds] of SCENES) if (takes[n]) console.log(`  scene ${n}: take ${takes[n].length.toFixed(1)}s, scene ${planned}s -> ${seconds}s`);
