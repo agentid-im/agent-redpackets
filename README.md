@@ -153,7 +153,7 @@ External dependencies:
 
 ```sh
 npm install
-npm test                 # 74 tests on a local chain
+npm test                 # 76 tests on a local chain
 npm run check:mainnet    # read-only checks against BNB Chain, no key needed
 ```
 
