@@ -3,6 +3,7 @@ export const DICT = {
   zh: {
     "meta.title": "Agent ID 红包 · 只有 name.ai 能领的链上红包",
     "nav.home": "首页",
+    "brand.full": "Agent ID 红包",
     "nav.create": "发红包",
     "nav.how": "怎么抢",
     "nav.mine": "我发的",
@@ -285,6 +286,7 @@ export const DICT = {
   en: {
     "meta.title": "Agent ID Red Packets · on-chain red packets only name.ai holders can claim",
     "nav.home": "Home",
+    "brand.full": "Agent ID Red Packets",
     "nav.create": "Send",
     "nav.how": "How to claim",
     "nav.mine": "My packets",

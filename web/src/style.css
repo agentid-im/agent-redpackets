@@ -494,3 +494,94 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .feature p { margin-top: 10px; }
   .feature .foot { margin-top: 12px; }
 }
+
+/* ------------------------------------------------------- app shell (phones) */
+
+html { -webkit-text-size-adjust: 100%; }
+* { -webkit-tap-highlight-color: transparent; }
+.appbar-back, .appbar-title { display: none; }
+#app.enter { animation: page-in 0.22s ease-out both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 768px) {
+  /* App bar: compact, translucent, the page's title; a back button below the tabs. */
+  .header {
+    height: calc(54px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top);
+    background: var(--bg); background: color-mix(in srgb, var(--bg) 86%, transparent);
+    -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+  }
+  .header-inner { gap: 4px; padding: 0 8px 0 14px; }
+  .header .brand .logo-mark { width: 32px; height: 32px; }
+  .appbar-title { display: block; flex: 1; min-width: 0; margin-left: 8px; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .appbar-back { width: 38px; height: 38px; margin-left: -8px; place-items: center; border-radius: 12px; color: var(--t1); }
+  .appbar-back svg { width: 24px; height: 24px; }
+  body.has-back .appbar-back { display: grid; }
+  body.has-back .header .brand { display: none; }
+  body.has-back .appbar-title { margin-left: 0; }
+  .header-tools { gap: 0; }
+  .header-tools .icon-btn { min-width: 36px; height: 36px; padding: 0 6px; }
+  .wallet .btn-sm, .wallet button { height: 36px; }
+  html { scroll-padding-top: calc(64px + env(safe-area-inset-top)); }
+
+  /* The app bar names the page, so the page headings and breadcrumbs go. */
+  .breadcrumb, .page-title h1 { display: none; }
+  .page-title { margin-bottom: 12px; }
+  .page-title:not(:has(.tag)) { display: none; }
+  .page { padding-block: 14px 24px; }
+
+  /* Denser cards and sections. */
+  .card { padding: 16px; border-radius: 16px; }
+  .table-card { padding: 4px 0 0; }
+  .section { padding-block: 28px; }
+  .section-head { margin-bottom: 14px; gap: 12px; }
+  .section-head h2 { font-size: 22px; }
+  .section-head p { font-size: 14px; margin-top: 4px; }
+  .two-col, .stack { gap: 14px; }
+
+  /* Home: get to the live data quickly. */
+  .hero { padding-block: 22px 4px; }
+  .hero h1 { font-size: 34px; line-height: 1.18; }
+  .hero .sub { font-size: 15px; margin-top: 12px; }
+  .hero .cta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+  .hero .cta .btn { width: 100%; padding: 0 12px; }
+  .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 20px; padding: 14px 6px; border-radius: 16px; background: var(--card); text-align: center; }
+  .hero-stats > div + div { border-left: 1px solid var(--line); }
+  .hero-stats .v { font-size: 22px; }
+  .hero-stats .k { font-size: 12px; }
+  .preview-card { display: none; }
+  .section-head > .btn { display: none; } /* the tab bar's Send does it */
+  .cta-band { margin: 8px 0 24px; padding: 20px; }
+  .cta-band h2 { font-size: 20px; }
+
+  /* Footer: only the risk notice. */
+  .footer-cols { display: none; }
+  .footer-inner { padding: 18px 16px 20px; }
+  .footer-legal { border-top: 0; margin-top: 0; padding-top: 0; font-size: 11px; line-height: 1.7; }
+
+  /* Tab bar: translucent; Send is the raised main action. */
+  .tabbar {
+    background: var(--bg); background: color-mix(in srgb, var(--bg) 88%, transparent);
+    -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+  }
+  .tabbar a[data-nav="create"] .ico {
+    width: 48px; height: 48px; padding: 12px; margin-top: -22px; border-radius: 50%;
+    background: var(--yellow); color: var(--on-yellow); box-shadow: 0 6px 18px rgba(240, 185, 11, 0.38);
+  }
+
+  /* Send page: the submit button stays in reach above the tab bar. */
+  #create-form > button[type="submit"] {
+    position: sticky; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 6;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  }
+
+  body.typing .tabbar { display: none; }
+  body.typing #create-form > button[type="submit"] { position: static; box-shadow: none; }
+
+  /* Touch feedback instead of hover. */
+  .btn, button, .row-link, .tabbar a, .chip-radio span, .chip-btn { transition: transform 0.08s ease, background-color 0.15s; }
+  .btn:active, button:active, .tabbar a:active, .chip-radio:active span, .chip-btn:active { transform: scale(0.96); }
+  .row-link:active { background: var(--hover); }
+}
+@media (hover: none) {
+  .table tr.row-link:hover td { background: none; }
+}

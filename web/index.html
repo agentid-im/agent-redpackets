@@ -21,6 +21,14 @@
     <meta name="twitter:description" content="On-chain red packets on BNB Chain that only Agent ID (name.ai) holders can claim." />
     <meta name="twitter:image" content="https://www.agentid.im/og.jpg" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- Installable web app: manifest, home-screen icon, full-screen on iOS. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Agent ID 红包" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
     <script>
       (function () {
         try {
@@ -75,6 +83,8 @@
           <span class="brand-name">Agent ID</span>
           <span class="brand-sub" data-i18n="brand.sub">红包</span>
         </a>
+        <a class="appbar-back" id="appbar-back" href="#/" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+        <div class="appbar-title" id="appbar-title" aria-live="polite"></div>
         <nav class="nav" aria-label="主导航">
           <a href="#/" data-nav="home" data-i18n="nav.home">首页</a>
           <a href="#/create" data-nav="create" data-i18n="nav.create">发红包</a>

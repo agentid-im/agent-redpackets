@@ -64,6 +64,8 @@ function setTheme(next) {
 
 function applyChrome() {
   document.title = t("meta.title");
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  if (bg) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg);
   $(".nav").setAttribute("aria-label", lang === "zh" ? "主导航" : "Main");
   $(".header .brand").setAttribute("aria-label", lang === "zh" ? "Agent ID 红包 首页" : "Agent ID Red Packets home");
   for (const el of $$("[data-i18n]")) el.innerHTML = t(el.dataset.i18n);
@@ -306,6 +308,7 @@ function route(keepScroll = false) {
   const m = hash.match(/^#\/r\/([^/?]+)/);
   const page = m ? "packet" : hash.startsWith("#/mine") ? "mine" : hash.startsWith("#/how") ? "how" : hash.startsWith("#/create") ? "create" : "home";
   for (const a of $$(".nav a, .tabbar a")) a.classList.toggle("on", a.dataset.nav === page);
+  appbar(page, { home: t("brand.full"), create: t("create.title"), mine: t("mine.title"), how: t("nav.how"), packet: "" }[page]);
 
   if (!CFG.contract) {
     app.innerHTML = `<div class="container page"><div class="card">${t("noContract")}</div></div>`;
@@ -325,6 +328,29 @@ function route(keepScroll = false) {
   else if (page === "how") requestAnimationFrame(() => $("#how")?.scrollIntoView());
   else window.scrollTo(0, 0);
 }
+
+/** Phone app bar: the page's title, and a back button on pages below the tabs. */
+function appbar(page, title) {
+  document.body.dataset.page = page;
+  document.body.classList.toggle("has-back", page === "packet");
+  $("#appbar-title").textContent = title ?? "";
+  // Each page change fades in, as in an app.
+  app.classList.toggle("enter", false);
+  void app.offsetWidth;
+  app.classList.toggle("enter", true);
+}
+// While the phone keyboard is up, the tab bar and the floating Send button would sit on top of
+// the field being typed in: they step aside until the field loses focus.
+const typingField = (el) => el?.matches?.("input:not([type=checkbox]):not([type=radio]), textarea, select");
+document.addEventListener("focusin", (e) => typingField(e.target) && document.body.classList.add("typing"));
+document.addEventListener("focusout", (e) => typingField(e.target) && document.body.classList.remove("typing"));
+let moves = 0; // page changes inside the site, so Back can go back instead of leaving
+window.addEventListener("hashchange", () => moves++);
+$("#appbar-back").onclick = (e) => {
+  e.preventDefault();
+  if (moves > 0) history.back();
+  else location.hash = "#/";
+};
 
 // --------------------------------------------------------------- home page
 
@@ -967,6 +993,7 @@ function showCreated(id, slug, type, share, code, passphrase, hidePass, intro) {
 async function openPacket(slug) {
   if (!SLUG_RE.test(slug)) return notFound();
   app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.opening")}</div></div>`;
+  $("#appbar-title").textContent = t("packet.opening");
   let indexed = null;
   try {
     indexed = await api(`/r/${slug}`);
@@ -983,6 +1010,7 @@ function notFound() {
 }
 
 async function pagePacket(id, slug, indexed) {
+  $("#appbar-title").textContent = t("packet.title", { id });
   app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.loading", { id })}</div></div>`;
   let p;
   try {
@@ -1238,5 +1266,8 @@ $("#lang-toggle").onclick = () => setLang(lang === "zh" ? "en" : "zh");
 $("#theme-toggle").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
 applyChrome();
 window.addEventListener("hashchange", () => route());
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
 renderWallet();
 route();
