@@ -62,8 +62,9 @@ async function main() {
       }, recorded);
     }
     if (still) {
-      await page.evaluate((ms) => window.seek(ms), SCENES[s] * 1000 - 200);
-      await page.screenshot({ path: path.join(out, `still-${s}.png`) });
+      const atArg = args.find((x) => x.startsWith("--at="));
+      await page.evaluate((ms) => window.seek(ms), atArg ? Number(atArg.slice(5)) * 1000 : SCENES[s] * 1000 - 200);
+      await page.screenshot({ path: path.join(out, atArg ? `still-${s}-at-${atArg.slice(5)}.png` : `still-${s}.png`) });
       console.log(`still ${s}`);
       continue;
     }

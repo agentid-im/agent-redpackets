@@ -66,7 +66,7 @@ SCENES.forEach((sc, i) => {
   inputs.push("-i", file);
   const have = videoLength(file);
   const hold = Math.max(0, sc.seconds - have);
-  filters.push(`[${i}:v]trim=duration=${Math.min(have, sc.seconds).toFixed(2)},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)},format=yuv420p,fade=t=in:st=0:d=${FADE},fade=t=out:st=${(sc.seconds - FADE).toFixed(2)}:d=${FADE}[v${i}]`);
+  filters.push(`[${i}:v]trim=duration=${Math.min(have, sc.seconds).toFixed(2)},setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)},format=yuv420p,${i ? `fade=t=in:st=0:d=${FADE},` : ""}fade=t=out:st=${(sc.seconds - FADE).toFixed(2)}:d=${FADE}[v${i}]`);
 });
 filters.push(`${SCENES.map((_, i) => `[v${i}]`).join("")}concat=n=${SCENES.length}:v=1:a=0[base]`);
 let last = "base";
@@ -98,8 +98,12 @@ if (placed.length) {
   audio = "[aout]";
 }
 
+// Cover: the title card at t=0 (also the video's first frame), embedded as the file's cover picture.
+const cover = path.join(out, "cover.png");
+const coverArgs = fs.existsSync(cover) ? (inputs.push("-i", cover), ["-map", `${inputs.length / 2 - 1}:v`, "-c:v:1", "mjpeg", "-disposition:v:1", "attached_pic"]) : [];
+
 const total = SCENES.reduce((s, sc) => s + sc.seconds, 0);
 const file = path.join(out, "agent-id-red-packets.mp4");
-execFileSync(ffmpeg, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", `[${last}]`, ...(audio ? ["-map", audio, "-c:a", "aac", "-b:a", "192k"] : []), "-t", total.toFixed(2), "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", file]);
+execFileSync(ffmpeg, ["-y", "-loglevel", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", `[${last}]`, ...(audio ? ["-map", audio, "-c:a", "aac", "-ar", "48000", "-b:a", "192k"] : []), ...coverArgs, "-t", total.toFixed(2), "-c:v:0", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", file]);
 console.log(`${file} (${total.toFixed(1)}s${audio ? `, ${placed.length} narration parts` : ", no narration yet"})`);
 for (const sc of SCENES) console.log(`  scene ${sc.n}: ${sc.planned}s planned -> ${sc.seconds}s`);
