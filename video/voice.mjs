@@ -1,6 +1,6 @@
 // Generates the narration takes with the Fish Audio API (model s2.1-pro-free) from video/narration.json
 // into video/voice/vo-N.mp3 (git-ignored). The key and voice id are read from the environment or from
-// the file named by FISH_ENV (default /Volumes/D/fish.env), never from the repository.
+// the file named by FISH_ENV (default ../fish.env, next to the repository), never from the repository.
 //   node video/voice.mjs [segment ...]      e.g. node video/voice.mjs 1 3
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const envFile = process.env.FISH_ENV ?? "/Volumes/D/fish.env";
+const envFile = process.env.FISH_ENV ?? path.join(here, "..", "..", "fish.env");
 const fileEnv = fs.existsSync(envFile)
   ? Object.fromEntries(fs.readFileSync(envFile, "utf8").split("\n").filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]))
   : {};

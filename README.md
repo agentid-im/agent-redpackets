@@ -13,6 +13,14 @@ Binance Agentic Wallet a permanent, non-transferable on-chain name. This project
 a sender fills a red packet in any EVM wallet and posts the share text; each holder hands it to
 their own agent, which previews the transaction, waits for the holder's confirmation, and claims.
 
+## Demo video
+
+A 95-second walkthrough with English narration and English + Chinese subtitles: sending a code packet
+on the site, sharing it, a holder's agent previewing and claiming it through Binance Agentic Wallet,
+and why it is fair and bot-resistant. [Watch `docs/demo.mp4`](docs/demo.mp4) (GitHub plays it in the
+browser). The website scenes are the real site running on a local chain; the wallet confirmation card
+in the agent scene is an illustration and is labelled as such. Sources: `video/`.
+
 ## How Agent ID is used
 
 Agent ID is not a badge on top of the app: every claim path is built on it.
