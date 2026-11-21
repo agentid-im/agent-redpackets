@@ -631,6 +631,7 @@ async function loadLatest() {
     if (!body.isConnected) return;
     body.innerHTML = indexed.length ? indexed.map(([id, slug, p]) => packetRow(id, p, slug)).join("") : `<tr class="empty-row"><td colspan="7">${t("latest.empty")}</td></tr>`;
     for (const tr of $$("tr[data-href]", body)) tr.onclick = () => (location.hash = tr.dataset.href);
+    refreshLive(body, indexed);
     return;
   }
   try {
@@ -648,6 +649,29 @@ async function loadLatest() {
 }
 
 /** A feed row; it links to the packet only when its link code is known (indexed rows). */
+/**
+ * The index trails the chain by about a minute, so a packet just emptied can still look live there:
+ * the rows it shows as live are read again from the chain (usually only a few).
+ */
+function refreshLive(body, rows) {
+  const now = Math.floor(Date.now() / 1000);
+  for (const [id, slug, p] of rows) {
+    if (!slug || p.grabbed >= p.shares || now >= Number(p.expiry)) continue;
+    hbRead
+      .getPacket(id)
+      .then((c) => {
+        if (c.grabbed === p.grabbed || !body.isConnected) return;
+        const sel = `tr[data-href="#/r/${CSS.escape(slug)}"]`;
+        const tr = $(sel, body);
+        if (!tr) return;
+        tr.outerHTML = packetRow(id, { ...p, grabbed: c.grabbed }, slug);
+        const fresh = $(sel, body);
+        if (fresh) fresh.onclick = () => (location.hash = fresh.dataset.href);
+      })
+      .catch(() => {});
+  }
+}
+
 function packetRow(id, p, slug) {
   const tk = tokenOf(p.token);
   const kind = Number(p.kind);
