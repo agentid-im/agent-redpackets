@@ -19,9 +19,54 @@ const SKILL_URL = "https://www.agentid.im/skill/agent-redpackets.zip";
 const WALLET_SKILL = "binance/binance-skills-hub/skills/binance-web3/binance-agentic-wallet";
 const TYPES = ["direct", "code", "public"]; // index = on-chain kind
 
-const reader = new JsonRpcProvider(CFG.rpc, CFG.chainId, { staticNetwork: true, batchMaxCount: 1 });
+/**
+ * Reads through several public nodes. Calls take turns across them (`rotate`) or prefer the first, and
+ * a node that fails, refuses (rate limits, range caps) or is slow is skipped for the next one. A
+ * contract revert is an answer, not a node failure.
+ */
+class NodePool extends JsonRpcProvider {
+  constructor(urls, { rotate = true, timeout = 8000 } = {}) {
+    super(urls[0], CFG.chainId, { staticNetwork: true, batchMaxCount: 1 });
+    this.urls = urls;
+    this.rotate = rotate;
+    this.timeout = timeout;
+    this.turn = rotate ? Math.floor(Math.random() * urls.length) : 0;
+    this.restUntil = new Map(); // a node that just failed sits out a minute
+  }
+  async _send(payload) {
+    const start = this.rotate ? this.turn++ : 0;
+    const order = this.urls.map((_, k) => this.urls[(start + k) % this.urls.length]);
+    const now = Date.now();
+    const ready = order.filter((u) => !(this.restUntil.get(u) > now));
+    let lastError;
+    let lastAnswer;
+    for (const url of [...ready, ...order.filter((u) => !ready.includes(u))]) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout?.(this.timeout),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        const out = Array.isArray(body) ? body : [body];
+        if (!out.some((r) => r.error && !isRevert(r.error))) return out;
+        lastAnswer = out;
+      } catch (e) {
+        lastError = e;
+        this.restUntil.set(url, Date.now() + 60_000);
+      }
+    }
+    if (lastAnswer) return lastAnswer;
+    throw lastError;
+  }
+}
+const isRevert = (e) => e.code === 3 || e.data !== undefined || /revert/i.test(e.message || "");
+
+const reader = new NodePool(CFG.rpcs);
 const hbRead = CFG.contract ? new Contract(CFG.contract, abi, reader) : null;
-const logsReader = CFG.logsRpc === CFG.rpc ? reader : new JsonRpcProvider(CFG.logsRpc, CFG.chainId, { staticNetwork: true, batchMaxCount: 1 });
+const logsReader = new NodePool(CFG.logsRpcs, { rotate: false, timeout: 15000 });
 const hbLogs = CFG.contract ? new Contract(CFG.contract, abi, logsReader) : null;
 let registryRead = null;
 const handleCache = new Map();
@@ -198,7 +243,8 @@ function statusOf(p) {
 /** Read API served by the site's Worker (worker/index.js); throws when it is not available. */
 async function api(path) {
   const res = await fetch(`/api${path}`, { headers: { accept: "application/json" } });
-  if (!res.ok || !(res.headers.get("content-type") || "").includes("json")) throw new Error(`api ${res.status}`);
+  const isJson = (res.headers.get("content-type") || "").includes("json");
+  if (!res.ok || !isJson) throw Object.assign(new Error(`api ${res.status}`), { body: isJson ? await res.json().catch(() => null) : null });
   return res.json();
 }
 
@@ -563,16 +609,8 @@ async function loadStats() {
   } catch {
     if ($("#st-packets")) $("#st-packets").textContent = "–";
   }
-  try {
-    const [g, d] = await Promise.all([
-      scanLogs(hbLogs.filters.Grabbed(), Number(CFG.deployBlock), 20),
-      scanLogs(hbLogs.filters.DirectClaimed(), Number(CFG.deployBlock), 20),
-    ]);
-    const n = new Set([...g, ...d].map((l) => l.args.who)).size;
-    if ($("#st-agents")) $("#st-agents").textContent = n.toLocaleString();
-  } catch {
-    if ($("#st-agents")) $("#st-agents").textContent = "–";
-  }
+  // Counting claimers needs the index (the whole chain is too much to scan from a page).
+  if ($("#st-agents")) $("#st-agents").textContent = "–";
 }
 
 async function loadLatest() {
@@ -1089,21 +1127,24 @@ async function openPacket(slug) {
   app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.opening")}</div></div>`;
   $("#appbar-title").textContent = t("packet.opening");
   let indexed = null;
+  let indexedBlock = null; // the index has every event up to this block
   try {
     indexed = await api(`/r/${slug}`);
-  } catch {
+    indexedBlock = indexed.indexedBlock ?? null;
+  } catch (e) {
     indexed = null;
+    indexedBlock = e.body?.indexedBlock ?? null; // a packet the index does not have yet is newer than this
   }
   const id = indexed?.packet?.id ?? saved().find((e) => e.slug === slug)?.id;
   if (id == null) return notFound();
-  pagePacket(BigInt(id), slug, indexed);
+  pagePacket(BigInt(id), slug, indexed, indexedBlock);
 }
 
 function notFound() {
   app.innerHTML = `<div class="container page"><div class="card empty">${I.box}<p>${t("packet.notFound")}</p><a class="btn" href="#/">${t("packet.home")}</a></div></div>`;
 }
 
-async function pagePacket(id, slug, indexed) {
+async function pagePacket(id, slug, indexed, indexedBlock = null) {
   $("#appbar-title").textContent = t("packet.title", { id });
   app.innerHTML = `<div class="loading"><div><div class="spinner"></div>${t("packet.loading", { id })}</div></div>`;
   let p;
@@ -1209,52 +1250,82 @@ async function pagePacket(id, slug, indexed) {
   };
   act("#open", () => send(hbRead, "open", [id, 20n]));
   act("#refund", () => send(hbRead, "refund", [id]));
-  renderClaims(id, p, token, indexed).catch((e) => {
+  renderClaims(id, p, token, indexed, indexedBlock).catch((e) => {
     if ($("#claims")) $("#claims").innerHTML = `<tr class="empty-row"><td colspan="4">${esc(t("packet.claimsFailed", { reason: reason(e) }))}</td></tr>`;
   });
 }
 
-async function renderClaims(id, p, token, indexed) {
+/**
+ * The claim list: the index's rows, plus only what the chain has after the index (it trails by about a
+ * minute, so during a grab that is a few hundred blocks and a few claims, read in parallel). Without
+ * the index, the chain is read from the packet's first block.
+ */
+async function renderClaims(id, p, token, indexed, indexedBlock) {
   const list = $("#claims");
-  const rows = [];
   const kind = Number(p.kind);
-  // The index trails the chain by up to a minute; when it is behind, read the chain instead.
-  if (!indexed?.claims || indexed.claims.length < Number(p.grabbed)) indexed = null;
-  if (indexed) {
-    for (const c of indexed.claims) {
-      const pending = c.amount === null;
-      const amount = pending ? t("packet.pending") : fmt(BigInt(c.amount), token) + (c.floored ? t("packet.floored") : "");
-      rows.push({ who: c.who, amount, best: pending ? undefined : BigInt(c.amount), pending, handle: c.handle || "" });
-    }
-  } else if (kind === 0) {
-    const logs = await scanLogs(hbLogs.filters.DirectClaimed(id), Number(CFG.deployBlock));
-    for (const l of logs) rows.push({ who: l.args.who, amount: fmt(l.args.amount, token), best: l.args.amount });
-  } else {
-    const amounts = new Map();
-    if (p.lucky && p.opened > 0n) {
-      const [, firstBlock] = await hbRead.getSlot(id, 0);
-      for (const l of await scanLogs(hbLogs.filters.Opened(id), Number(firstBlock))) {
-        amounts.set(Number(l.args.slot), { amount: l.args.amount, floored: l.args.floored });
-      }
-    }
-    // Equal packets pay at grab and keep no slot record: their claimers come from Grabbed events.
-    const grabbers = new Map();
-    if (!p.lucky) for (const l of await scanLogs(hbLogs.filters.Grabbed(id), Number(CFG.deployBlock))) grabbers.set(Number(l.args.slot), l.args.who);
-    for (let i = 0; i < Number(p.grabbed); i++) {
-      const who = p.lucky ? (await hbRead.getSlot(id, i))[0] : grabbers.get(i) ?? ZeroAddress;
-      const o = amounts.get(i);
-      const pending = p.lucky && i >= Number(p.opened);
-      const amount = !p.lucky ? fmt(p.unit, token) : pending ? t("packet.pending") : o ? fmt(o.amount, token) + (o.floored ? t("packet.floored") : "") : t("packet.opened");
-      rows.push({ who, amount, best: o?.amount, pending });
+  const lucky = kind !== 0 && Boolean(p.lucky);
+  const grabbed = Number(p.grabbed);
+  // Rows keyed by slot (grab packets) or by claimer (direct packets), the index's first.
+  const rows = new Map();
+  const keyOf = (who, slot) => (kind === 0 ? who.toLowerCase() : Number(slot));
+  if (indexedBlock != null) {
+    for (const c of indexed?.claims ?? []) {
+      rows.set(keyOf(c.who, c.slot), { who: c.who, amount: c.amount === null ? null : BigInt(c.amount), floored: Boolean(c.floored), handle: c.handle || null });
     }
   }
+  const paidKnown = [...rows.values()].filter((r) => r.amount !== null).length;
+  const needOpened = lucky && paidKnown < Number(p.opened);
+  if (rows.size < grabbed || needOpened) {
+    const from = indexedBlock != null ? indexedBlock + 1 : await firstBlockOf(id, p);
+    if (kind === 0) {
+      for (const l of await scanLogs(hbLogs.filters.DirectClaimed(id), from)) {
+        rows.set(keyOf(l.args.who), { who: l.args.who, amount: l.args.amount, floored: false, handle: null });
+      }
+    } else if (lucky) {
+      const missing = [];
+      for (let i = 0; i < grabbed; i++) if (!rows.has(i)) missing.push(i);
+      const [slots, opened] = await Promise.all([
+        Promise.all(missing.map((i) => hbRead.getSlot(id, i))),
+        needOpened ? scanLogs(hbLogs.filters.Opened(id), from) : [],
+      ]);
+      missing.forEach((i, k) => rows.set(i, { who: slots[k][0], amount: null, floored: false, handle: null }));
+      for (const l of opened) {
+        const r = rows.get(Number(l.args.slot));
+        if (r) Object.assign(r, { amount: l.args.amount, floored: l.args.floored });
+      }
+    } else {
+      // Equal packets pay at grab and keep no slot record: their claimers come from Grabbed events.
+      for (const l of await scanLogs(hbLogs.filters.Grabbed(id), from)) {
+        const slot = Number(l.args.slot);
+        if (!rows.has(slot)) rows.set(slot, { who: l.args.who, amount: p.unit, floored: false, handle: null });
+      }
+    }
+  }
+  const entries = kind === 0 ? [...rows.values()].map((r) => [null, r]) : [...rows.entries()].sort((a, b) => a[0] - b[0]);
+  const out = entries.map(([slot, r]) => {
+    // A lucky slot is paid when it is opened; an opened one whose amount is not read yet says so.
+    const pending = lucky && r.amount === null && slot >= Number(p.opened);
+    const amount = r.amount !== null ? fmt(r.amount, token) + (r.floored ? t("packet.floored") : "") : lucky ? t(pending ? "packet.pending" : "packet.opened") : fmt(p.unit, token);
+    return { who: r.who, amount, best: r.amount ?? undefined, pending, handle: r.handle };
+  });
   if (!list.isConnected) return;
+  return drawClaims(list, out, p, kind);
+}
+
+/** Where to read a packet's events from without the index: its first grab, else the contract's first block. */
+async function firstBlockOf(id, p) {
+  if (p.kind !== 0n && p.lucky && p.grabbed > 0n) return Number((await hbRead.getSlot(id, 0))[1]);
+  return Number(CFG.deployBlock);
+}
+
+async function drawClaims(list, rows, p, kind) {
   if (!rows.length) {
     list.innerHTML = `<tr class="empty-row"><td colspan="4">${t("packet.none")}</td></tr>`;
     return;
   }
   const best = p.lucky || kind === 0 ? rows.reduce((m, r) => (r.best !== undefined && (m === null || r.best > m) ? r.best : m), null) : null;
-  const names = await Promise.all(rows.map((r) => ("handle" in r ? r.handle : handleOf(r.who))));
+  // The index has most names; the newest claimers and any it has not filled in yet are looked up.
+  const names = await Promise.all(rows.map((r) => r.handle || handleOf(r.who)));
   if (!list.isConnected) return;
   list.innerHTML = rows
     .map((r, i) => {
@@ -1269,16 +1340,21 @@ async function renderClaims(id, p, token, indexed) {
     .join("");
 }
 
-/** Public nodes cap log ranges, so search in chunks from a known starting block. */
-async function scanLogs(filter, fromBlock, maxChunks = 40) {
+/** Public nodes cap log ranges, so search in chunks of 5000 blocks from a known starting block, a few at a time. */
+async function scanLogs(filter, fromBlock, maxChunks = Infinity) {
   const head = Number(await logsReader.send("eth_blockNumber", [])); // uncached: the newest block matters
-  const out = [];
-  let a = Math.max(0, fromBlock);
-  for (let i = 0; a <= head && i < maxChunks; i++, a += 5000) {
-    const b = a + 4999 >= head ? "latest" : a + 4999;
-    out.push(...(await hbLogs.queryFilter(filter, a, b)));
-  }
-  return out;
+  const ranges = [];
+  for (let a = Math.max(0, fromBlock); a <= head && ranges.length < maxChunks; a += 5000) ranges.push([a, a + 4999 >= head ? "latest" : a + 4999]);
+  const out = new Array(ranges.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < ranges.length) {
+      const k = next++;
+      out[k] = await hbLogs.queryFilter(filter, ...ranges[k]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, ranges.length) }, worker));
+  return out.flat();
 }
 
 // ---------------------------------------------------------------- mine page

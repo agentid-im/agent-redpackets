@@ -461,15 +461,19 @@ async function api(request, url, env, ctx) {
   }
   const m = path.match(/^\/api\/r\/([^/]+)$/);
   if (m && SLUG_RE.test(m[1])) {
+    // The cursor is read first: everything up to it is in the rows read after it (the indexer moves
+    // it in the same batch as the rows), so the page only reads the chain after it.
+    const cursor = (await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first())?.value;
+    const indexedBlock = cursor == null ? null : Number(cursor);
     const packet = await db.prepare("SELECT * FROM packets WHERE slug = ?").bind(m[1]).first();
-    if (!packet) return json({ error: "not indexed" }, 404, 5);
+    if (!packet) return json({ error: "not indexed", indexedBlock }, 404, 5);
     const id = packet.id;
     packet.tokenMeta = await tokenMeta(env, packet.token).catch(() => null);
     const { results } = await db
       .prepare("SELECT who, slot, handle, amount, floored, block FROM claims WHERE packet_id = ? ORDER BY slot IS NULL, slot, block")
       .bind(id)
       .all();
-    return json({ packet, claims: results, profile: await packetProfile(db, packet.id, packet.creator) });
+    return json({ packet, claims: results, indexedBlock, profile: await packetProfile(db, packet.id, packet.creator) });
   }
   return json({ error: "not found" }, 404, 60);
 }
