@@ -1285,10 +1285,15 @@ async function renderClaims(id, p, token, indexed, indexedBlock) {
       const missing = [];
       for (let i = 0; i < grabbed; i++) if (!rows.has(i)) missing.push(i);
       const [slots, opened] = await Promise.all([
-        Promise.all(missing.map((i) => hbRead.getSlot(id, i))),
+        Promise.allSettled(missing.map((i) => hbRead.getSlot(id, i))),
         needOpened ? scanLogs(hbLogs.filters.Opened(id), from) : [],
       ]);
-      missing.forEach((i, k) => rows.set(i, { who: slots[k][0], amount: null, floored: false, handle: null }));
+      // The nodes take turns, and one a block or two behind may not have the newest slot yet: such a
+      // row is left out and shows up on the next load.
+      missing.forEach((i, k) => {
+        const who = slots[k].status === "fulfilled" ? slots[k].value[0] : ZeroAddress;
+        if (who !== ZeroAddress) rows.set(i, { who, amount: null, floored: false, handle: null });
+      });
       for (const l of opened) {
         const r = rows.get(Number(l.args.slot));
         if (r) Object.assign(r, { amount: l.args.amount, floored: l.args.floored });
