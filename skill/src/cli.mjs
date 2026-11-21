@@ -309,24 +309,38 @@ async function cmdInbox(ctx, pos, opt) {
   const handle = await ctx.registry.handleOf(from);
   if (!handle) fail("这个钱包没有 Agent ID");
   const h = handleHash(handle);
-  const head = Number(await ctx.logsProvider.send("eth_blockNumber", []));
-  const start = Number(str(opt, "since-block") ?? Math.max(ctx.deployBlock, head - 200_000));
-  const found = [];
-  for (let a = start; a <= head; a += 5000) {
-    try {
-      found.push(...(await ctx.logs.queryFilter(ctx.logs.filters.DirectAdded(null, h), a, Math.min(head, a + 4999))));
-    } catch (e) {
-      fail(`节点拒绝查询历史日志（${e.shortMessage ?? e.message}）：换一个支持日志的 RPC，传 --rpc`);
+  // The website's index lists the packets addressed to this name up to some block; the chain is read
+  // after it (or, without the index, from the contract's first block). The index only suggests
+  // packets: each one is checked on chain below.
+  const byId = new Map(); // id -> { id, token, block }
+  let start = str(opt, "since-block") === undefined ? null : Number(opt["since-block"]);
+  let source = "chain";
+  if (start === null) {
+    const listed = await indexedInbox(ctx, h);
+    if (listed) {
+      for (const d of listed.directs) byId.set(String(d.id), { id: BigInt(d.id), token: d.token, block: Number(d.block) });
+      start = listed.indexedBlock + 1;
+      source = "index+chain";
+    } else {
+      start = Number(ctx.deployBlock);
     }
   }
+  try {
+    for (const l of await scanLogs(ctx, ctx.logs.filters.DirectAdded(null, h), start)) {
+      byId.set(l.args.id.toString(), { id: l.args.id, token: l.args.token, block: l.blockNumber });
+    }
+  } catch (e) {
+    fail(`节点拒绝查询历史日志（${e.shortMessage ?? e.message}）：换一个支持日志的 RPC，传 --rpc`);
+  }
+  const found = [...byId.values()].sort((a, b) => a.block - b.block || (a.id < b.id ? -1 : 1));
   // Anyone can address a direct packet to any name, so the inbox may hold junk tokens: those are
   // left out unless --all, and at most INBOX_MAX recent entries are read.
   const all = Boolean(opt.all);
-  const custom = found.filter((l) => !isListed(ctx, l.args.token));
-  const wanted = (all ? found : found.filter((l) => isListed(ctx, l.args.token))).slice(-INBOX_MAX).reverse();
+  const custom = found.filter((l) => !isListed(ctx, l.token));
+  const wanted = (all ? found : found.filter((l) => isListed(ctx, l.token))).slice(-INBOX_MAX).reverse();
   const open = [];
   for (const log of wanted) {
-    const id = log.args.id;
+    const id = log.id;
     const amount = await ctx.hb.directAmount(id, h);
     if (amount === 0n) continue;
     const p = await ctx.hb.getPacket(id);
@@ -340,7 +354,40 @@ async function cmdInbox(ctx, pos, opt) {
     claimable: open,
     ...(!all && custom.length ? { hiddenCustomTokenPackets: custom.length, note: "另有自定义代币的定向红包没列出：任何人都能给任意名字发，可能是垃圾或诈骗代币。用户明确要看时再加 --all" } : {}),
     scannedFromBlock: start,
+    source,
   });
+}
+
+/** The website index's direct packets for a name hash, or null when it cannot be reached. */
+async function indexedInbox(ctx, h) {
+  const base = process.env.HONGBAO_API ?? ctx.cfg.api;
+  if (!base || process.env.HONGBAO_API === "") return null;
+  try {
+    const res = await fetch(`${base.replace(/\/$/, "")}/api/inbox/${h}`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!Array.isArray(body.directs) || !Number.isInteger(body.indexedBlock)) return null;
+    return body;
+  } catch {
+    return null;
+  }
+}
+
+/** Event search from `fromBlock` to the newest block in 5000-block chunks (public nodes cap ranges), four at a time. */
+async function scanLogs(ctx, filter, fromBlock) {
+  const head = Number(await ctx.logsProvider.send("eth_blockNumber", []));
+  const ranges = [];
+  for (let a = Math.max(0, fromBlock); a <= head; a += 5000) ranges.push([a, Math.min(head, a + 4999)]);
+  const out = new Array(ranges.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < ranges.length) {
+      const k = next++;
+      out[k] = await ctx.logs.queryFilter(filter, ...ranges[k]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, ranges.length) }, worker));
+  return out.flat();
 }
 
 async function cmdResult(ctx, pos, opt) {

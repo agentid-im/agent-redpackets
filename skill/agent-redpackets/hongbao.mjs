@@ -18,7 +18,7 @@ var __export = (target, all) => {
 var define_HONGBAO_DEFAULTS_default;
 var init_define_HONGBAO_DEFAULTS = __esm({
   "<define:__HONGBAO_DEFAULTS__>"() {
-    define_HONGBAO_DEFAULTS_default = { chainId: 56, contract: "0xA39660B43c3F797d4bBEab8Df0e40D771565b8CE", deployBlock: 134546696, rpc: "https://bsc-dataseed.binance.org", logsRpc: "https://bsc-rpc.publicnode.com", tokens: [{ symbol: "USDT", address: "0x55d398326f99059fF775485246999027B3197955" }, { symbol: "USDC", address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d" }] };
+    define_HONGBAO_DEFAULTS_default = { chainId: 56, contract: "0xA39660B43c3F797d4bBEab8Df0e40D771565b8CE", deployBlock: 134546696, rpc: "https://bsc-dataseed.binance.org", logsRpc: "https://bsc-rpc.publicnode.com", api: "https://www.agentid.im", tokens: [{ symbol: "USDT", address: "0x55d398326f99059fF775485246999027B3197955" }, { symbol: "USDC", address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d" }] };
   }
 });
 
@@ -22129,22 +22129,33 @@ async function cmdInbox(ctx, pos, opt) {
   const handle = await ctx.registry.handleOf(from);
   if (!handle) fail("\u8FD9\u4E2A\u94B1\u5305\u6CA1\u6709 Agent ID");
   const h = handleHash(handle);
-  const head = Number(await ctx.logsProvider.send("eth_blockNumber", []));
-  const start = Number(str(opt, "since-block") ?? Math.max(ctx.deployBlock, head - 2e5));
-  const found = [];
-  for (let a = start; a <= head; a += 5e3) {
-    try {
-      found.push(...await ctx.logs.queryFilter(ctx.logs.filters.DirectAdded(null, h), a, Math.min(head, a + 4999)));
-    } catch (e) {
-      fail(`\u8282\u70B9\u62D2\u7EDD\u67E5\u8BE2\u5386\u53F2\u65E5\u5FD7\uFF08${e.shortMessage ?? e.message}\uFF09\uFF1A\u6362\u4E00\u4E2A\u652F\u6301\u65E5\u5FD7\u7684 RPC\uFF0C\u4F20 --rpc`);
+  const byId = /* @__PURE__ */ new Map();
+  let start = str(opt, "since-block") === void 0 ? null : Number(opt["since-block"]);
+  let source = "chain";
+  if (start === null) {
+    const listed = await indexedInbox(ctx, h);
+    if (listed) {
+      for (const d of listed.directs) byId.set(String(d.id), { id: BigInt(d.id), token: d.token, block: Number(d.block) });
+      start = listed.indexedBlock + 1;
+      source = "index+chain";
+    } else {
+      start = Number(ctx.deployBlock);
     }
   }
+  try {
+    for (const l of await scanLogs(ctx, ctx.logs.filters.DirectAdded(null, h), start)) {
+      byId.set(l.args.id.toString(), { id: l.args.id, token: l.args.token, block: l.blockNumber });
+    }
+  } catch (e) {
+    fail(`\u8282\u70B9\u62D2\u7EDD\u67E5\u8BE2\u5386\u53F2\u65E5\u5FD7\uFF08${e.shortMessage ?? e.message}\uFF09\uFF1A\u6362\u4E00\u4E2A\u652F\u6301\u65E5\u5FD7\u7684 RPC\uFF0C\u4F20 --rpc`);
+  }
+  const found = [...byId.values()].sort((a, b2) => a.block - b2.block || (a.id < b2.id ? -1 : 1));
   const all = Boolean(opt.all);
-  const custom = found.filter((l) => !isListed(ctx, l.args.token));
-  const wanted = (all ? found : found.filter((l) => isListed(ctx, l.args.token))).slice(-INBOX_MAX).reverse();
+  const custom = found.filter((l) => !isListed(ctx, l.token));
+  const wanted = (all ? found : found.filter((l) => isListed(ctx, l.token))).slice(-INBOX_MAX).reverse();
   const open = [];
   for (const log of wanted) {
-    const id2 = log.args.id;
+    const id2 = log.id;
     const amount = await ctx.hb.directAmount(id2, h);
     if (amount === 0n) continue;
     const p = await ctx.hb.getPacket(id2);
@@ -22157,8 +22168,37 @@ async function cmdInbox(ctx, pos, opt) {
     agentId: `${handle}.ai`,
     claimable: open,
     ...!all && custom.length ? { hiddenCustomTokenPackets: custom.length, note: "\u53E6\u6709\u81EA\u5B9A\u4E49\u4EE3\u5E01\u7684\u5B9A\u5411\u7EA2\u5305\u6CA1\u5217\u51FA\uFF1A\u4EFB\u4F55\u4EBA\u90FD\u80FD\u7ED9\u4EFB\u610F\u540D\u5B57\u53D1\uFF0C\u53EF\u80FD\u662F\u5783\u573E\u6216\u8BC8\u9A97\u4EE3\u5E01\u3002\u7528\u6237\u660E\u786E\u8981\u770B\u65F6\u518D\u52A0 --all" } : {},
-    scannedFromBlock: start
+    scannedFromBlock: start,
+    source
   });
+}
+async function indexedInbox(ctx, h) {
+  const base = process.env.HONGBAO_API ?? ctx.cfg.api;
+  if (!base || process.env.HONGBAO_API === "") return null;
+  try {
+    const res = await fetch(`${base.replace(/\/$/, "")}/api/inbox/${h}`, { signal: AbortSignal.timeout(8e3) });
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!Array.isArray(body.directs) || !Number.isInteger(body.indexedBlock)) return null;
+    return body;
+  } catch {
+    return null;
+  }
+}
+async function scanLogs(ctx, filter, fromBlock) {
+  const head = Number(await ctx.logsProvider.send("eth_blockNumber", []));
+  const ranges = [];
+  for (let a = Math.max(0, fromBlock); a <= head; a += 5e3) ranges.push([a, Math.min(head, a + 4999)]);
+  const out = new Array(ranges.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < ranges.length) {
+      const k = next++;
+      out[k] = await ctx.logs.queryFilter(filter, ...ranges[k]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, ranges.length) }, worker));
+  return out.flat();
 }
 async function cmdResult(ctx, pos, opt) {
   const from = getAddress(need(opt, "from"));

@@ -108,6 +108,9 @@ node hongbao.mjs inbox --from <me>        # lists direct packets addressed to th
 node hongbao.mjs claim <id> [<id>...] --from <me>
 ```
 
+`inbox` gets the list of packets addressed to the name from the agentid.im index (it sends only the
+name's hash), reads the chain for anything newer, and checks every packet on chain before listing
+it. Without the index it reads the chain from the contract's first block, which takes longer.
 If `inbox` says the node refuses history, ask the user for packet numbers instead, or retry with a
 `--rpc` that serves logs.
 

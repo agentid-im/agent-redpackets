@@ -24,6 +24,8 @@ const config = {
   rpc: d?.rpc ?? (network === "bsc" ? "https://bsc-dataseed.binance.org" : "http://127.0.0.1:8545"),
   // must serve eth_getLogs; Binance's dataseed nodes do not
   logsRpc: d?.rpc ?? (network === "bsc" ? "https://bsc-rpc.publicnode.com" : "http://127.0.0.1:8545"),
+  // The website's index, used to find direct packets by name; everything it lists is checked on chain.
+  api: network === "bsc" ? "https://www.agentid.im" : "http://127.0.0.1:8787",
   tokens: d?.token
     ? [{ symbol: "mUSD", address: d.token }]
     : params.tokens.filter((t) => t.address !== "0x0000000000000000000000000000000000000000").map(({ symbol, address }) => ({ symbol, address })),

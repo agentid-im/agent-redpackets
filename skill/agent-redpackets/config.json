@@ -4,6 +4,7 @@
   "deployBlock": 134546696,
   "rpc": "https://bsc-dataseed.binance.org",
   "logsRpc": "https://bsc-rpc.publicnode.com",
+  "api": "https://www.agentid.im",
   "tokens": [
     {
       "symbol": "USDT",

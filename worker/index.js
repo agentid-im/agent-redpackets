@@ -163,6 +163,13 @@ export async function indexOnce(env) {
             db.prepare("UPDATE claims SET amount = ?, floored = ? WHERE packet_id = ? AND who = ?").bind(a.amount.toString(), a.floored ? 1 : 0, Number(a.id), a.who)
           );
           break;
+        case "DirectAdded":
+          stmts.push(
+            db
+              .prepare("INSERT OR IGNORE INTO directs (packet_id, handle_hash, amount, token, block) VALUES (?, ?, ?, ?, ?)")
+              .bind(Number(a.id), a.handleHash.toLowerCase(), a.amount.toString(), a.token.toLowerCase(), block)
+          );
+          break;
         case "DirectClaimed":
           stmts.push(
             db
@@ -458,6 +465,17 @@ async function api(request, url, env, ctx) {
       .all();
     const cursor = await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first();
     return json({ claims: results, indexedBlock: Number(cursor?.value ?? 0) });
+  }
+  // Direct packets addressed to a name (by its hash), newest first: candidates an agent then checks
+  // on chain, plus the block the index is complete up to, so it reads the chain only after it.
+  const inbox = path.match(/^\/api\/inbox\/(0x[0-9a-fA-F]{64})$/);
+  if (inbox) {
+    const cursor = (await db.prepare("SELECT value FROM meta WHERE key = 'cursor'").first())?.value;
+    const { results } = await db
+      .prepare("SELECT packet_id AS id, amount, token, block FROM directs WHERE handle_hash = ? ORDER BY block DESC, packet_id DESC LIMIT 500")
+      .bind(inbox[1].toLowerCase())
+      .all();
+    return json({ directs: results, indexedBlock: cursor == null ? null : Number(cursor) });
   }
   const m = path.match(/^\/api\/r\/([^/]+)$/);
   if (m && SLUG_RE.test(m[1])) {

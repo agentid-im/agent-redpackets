@@ -71,3 +71,15 @@ CREATE TABLE IF NOT EXISTS packet_profiles (
   signature TEXT NOT NULL DEFAULT '',
   source TEXT NOT NULL
 );
+
+-- Direct packets by recipient (DirectAdded), so an agent finds the packets addressed to its name
+-- without scanning the whole chain. Only candidates: the agent checks each one on chain.
+CREATE TABLE IF NOT EXISTS directs (
+  packet_id INTEGER NOT NULL,
+  handle_hash TEXT NOT NULL,      -- lowercase 0x-hex keccak of the name
+  amount TEXT NOT NULL,
+  token TEXT NOT NULL,
+  block INTEGER NOT NULL,
+  PRIMARY KEY (packet_id, handle_hash)
+);
+CREATE INDEX IF NOT EXISTS directs_by_handle ON directs (handle_hash, block);
